@@ -37,6 +37,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'cloudinary_storage',
+    'cloudinary',
     'user',
     'core',
 ]
@@ -80,6 +82,14 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
+
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME':'dnylifhkj' ,
+    'API_KEY':'539541584874636',
+    'API_SECRET':'mwdA3mwucVkotze4hvX9KmyeV6U' ,
+}
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 
 # Password validation
