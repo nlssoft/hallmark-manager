@@ -3,7 +3,9 @@ from django.db import models
 
 class User(AbstractUser):
     email= models.EmailField(unique=True)
-    company_name = models.CharField(max_length=500)
+    company_name = models.CharField(max_length=500, 
+                                    null=True, blank=True)
+    company_address=models.TextField(null=True, blank=True)
     phone_number= models.CharField(max_length=255)
     address= models.TextField()
     parent=models.ForeignKey(

@@ -1,7 +1,10 @@
-from cloudinary.models import cloudinaryField
+from cloudinary.models import CloudinaryField
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.core.exceptions import ValidationError
+from django.db.models import Sum
+
 
 user = get_user_model()
 
@@ -13,10 +16,10 @@ class Groups(models.Model):
         related_name='owned_groups'
     )
     name=models.CharField(max_length=255)
-    description=models.TextField()
+    description=models.TextField(null=True, blank=True)
 
     class Meta:
-        ordring=['-pk']
+        ordering=['-pk']
         unique_together=('owner', 'name')
     
     def __str__(self) -> str:
@@ -37,14 +40,10 @@ class Customer(models.Model):
                              null=True, blank=True)
 
     name=models.CharField(max_length=455)
-    number= models.CharField(max_length=15)
-    email= models.EmailField()
-    address= models.TextField()
-    logo= models.CharField(max_length=10)
-
-    #to be removed at a later date
-    first_name=models.CharField(max_length=255)
-    last_name=models.CharField(max_length=255)
+    number= models.CharField(max_length=15, null=True, blank=True)
+    email= models.EmailField(null=True, blank=True, unique=True)
+    address= models.TextField(null=True, blank=True)
+    logo= models.CharField(max_length=10, null=True, blank=True)
     
     def __str__(self) -> str:
         return f"{self.name} {self.address}"
@@ -65,7 +64,7 @@ class Service(models.Model):
         ordering=['name']
         unique_together=('owner', 'name')
 
-class Groups_By_Rate(models.Model):
+class Rate_Group(models.Model):
     group=models.ForeignKey(Groups, 
                             on_delete=models.CASCADE)
     service= models.ForeignKey(Service,
@@ -77,7 +76,7 @@ class Groups_By_Rate(models.Model):
         unique_together=('group', 'service')
 
     def __str__(self) -> str:
-        return f"{self.group.name} {self.service.name} @{self.rate} "
+        return f"{self.group} {self.service} @{self.rate} "
     
 class Record(models.Model):
     customer=models.ForeignKey(Customer, 
@@ -85,15 +84,39 @@ class Record(models.Model):
     service=models.ForeignKey(Service,
                               on_delete=models.PROTECT)
     pcs = models.PositiveIntegerField()
-    rate= models.DecimalField(max_digits=10, decimal_places=2)
-    record_date= models.DateField(default=timezone.localdate)
-    discount = models.DecimalField(max_digits=10, decimal_places=2)
+    rate= models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    created_at= models.DateField(default=timezone.localdate)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True )
 
     class Meta:
-        ordering=['-record_date','-pk']
+        ordering=['-created_at','-pk']
     
     def __str__(self) -> str:
-        return f"Customer:{self.customer.name} Address: {self.customer.address}\nPcs: {self.pcs} Rate: {self.rate}\nDate:{self.record_date} Amount: {self.pcs * self.rate}"
+        return f"Customer:{self.customer}\nPcs: {self.pcs} \
+            Rate: {self.rate}\nDate:{self.created_at} Amount: {self.pcs * self.rate}"
+    
+    # derived values
+    @property
+    def amount(self):
+        return (self.rate or 0) * (self.pcs or 0)
+
+
+    # methods
+    def save(self, *args, **kwargs):
+        if not self.rate:
+            try:
+                rate_obj= Rate_Group.objects.get(
+                    group=self.customer.group,
+                    service= self.service
+                )
+                self.rate=rate_obj.rate
+            except Rate_Group.DoesNotExist:
+                raise ValidationError(
+                    'No rate defined for this customer and service.'
+                )
+
+            super().save(*args, **kwargs)
+
 
 class Payment(models.Model):
     mode_choice = [
@@ -104,15 +127,15 @@ class Payment(models.Model):
         Customer, on_delete=models.PROTECT,
     )
     amount=models.DecimalField(max_digits=10, decimal_places=2)
-    payment_date=models.DateField(default=timezone.localdate)
+    created_at=models.DateField(default=timezone.localdate)
     mode=models.CharField(max_length=1, choices=mode_choice, default='c')
-    image=cloudinaryField('image', blank=True, null=True )
+    image=CloudinaryField('image', blank=True, null=True )
 
     class Meta:
-        ordering=['-payment_date','-pk']
+        ordering=['-created_at','-pk']
     
     def __str__(self) -> str:
-        return f"Customer:{self.customer.name} Address: {self.customer.address}\nDate:{self.payment_date} Amount: {self.amount}"
+        return f"Customer:{self.customer} Date:{self.created_at} Amount: {self.amount}"
 
 class Allocation(models.Model):
     record= models.ForeignKey(Record, on_delete=models.PROTECT)
@@ -126,7 +149,7 @@ class Allocation(models.Model):
         return f"Record: {self.record} Payment: {self.payment} Amount: {self.amount}" 
 
 class Advance(models.Model):
-    customer= models.ForeignKey(Customer, on_delete=models.SET_NULL)
+    customer= models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True)
     total_amount= models.DecimalField(max_digits=10, decimal_places=2)
     payment = models.ForeignKey(Payment, on_delete=models.SET_NULL, null=True, blank=True)
     created_at= models.DateTimeField(default=timezone.now)
@@ -148,7 +171,8 @@ class AdvanceUsage(models.Model):
         ordering=['-pk']
 
     def __str__(self) -> str:
-        return f"Customer: {self.customer} Payment: {self.payment} Amount: {self.amount} Date: {self.created_at}"
+        return f"Record: {self.record} \
+            Amount: {self.amount} Date: {self.created_at}"
 
 class AuditLog(models.Model):
     model_choice= [
@@ -171,8 +195,21 @@ class AuditLog(models.Model):
         ordering=['-pk']
 
     def __str__(self) -> str:
-        return f"Customer: {self.before.customer} Model: {self.model}  Logged_at: {self.logged_at}, Status:{self.status}"
+        return f"Customer: {self.before.customer} Model: {self.model}  \
+            Logged_at: {self.logged_at}, Status:{self.status}"
 
 class Request(models.Model):
+    owner = models.ForeignKey(user, on_delete=models.CASCADE,
+                              related_name='requester')
+    record=models.ManyToManyField(Record)
+    amount=models.DecimalField(max_digits=10, decimal_places=2)
+    created_at=models.DateField(default=timezone.localdate)
+    reason=models.TextField(blank=True, null=True)
+    status= models.CharField(max_length=1, 
+                             choices=[('p', 'PENDING'), ('a', 'APPROVED'), ('r', 'REJECTED')], 
+                             default='p')
+
     
+    class Meta:
+        ordering=['-pk']
 
