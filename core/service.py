@@ -3,17 +3,18 @@ from django.db.models import Sum, F, Value, DecimalField
 from django.db.models.functions import Coalesce
 from decimal import Decimal
 
+
 class PaymentService:
 
     @staticmethod
     def allocate(payment):
-        records = Record.objects.filter(
-            customer=payment.customer
-        ).order_by('created_at').annotate(  # ← annotate here too
-            _paid_amount=Coalesce(
-                Sum('allocation__amount'),
-                Value(0),
-                output_field=DecimalField()
+        records = (
+            Record.objects.filter(customer=payment.customer)
+            .order_by("created_at")
+            .annotate(  # ← annotate here too
+                _paid_amount=Coalesce(
+                    Sum("allocation__amount"), Value(0), output_field=DecimalField()
+                )
             )
         )
 
@@ -23,7 +24,7 @@ class PaymentService:
             if remains <= 0:
                 break
 
-            due = record.amount - (record.discount + record._paid_amount)
+            due = record.amount - ((record.discount or 0) + (record._paid_amount or 0))
 
             if due <= 0:
                 continue
@@ -37,3 +38,7 @@ class PaymentService:
             )
 
             remains -= allocated
+
+    @staticmethod
+    def rollback(payment):
+        Allocation.objects.filter(payment=payment).delete()
