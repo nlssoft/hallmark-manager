@@ -3,7 +3,8 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from django.db.models import Sum
+from django.db.models import Sum, Value, DecimalField, ExpressionWrapper, F
+from django.db.models.functions import Coalesce
 
 user = get_user_model()
 
@@ -45,11 +46,43 @@ class Customer(models.Model):
     logo = models.CharField(max_length=10, null=True, blank=True)
 
     def __str__(self) -> str:
-        return f"{self.name} {self.address}"
+        return f"{self.name} Address:{self.address}"
 
     class Meta:
         ordering = ["-pk"]
 
+    #propertyes
+    
+    @property
+    def surplus(self):
+        total_advance= Advance.objects.filter(customer=self)\
+            .aggregate(total=Sum('total_amount'))['total'] or 0
+        
+        used= AdvanceUsage.objects.filter(advance__customer=self)\
+            .aggregate(total=Sum('amount'))['total'] or 0
+        
+        return total_advance - used
+    
+    @property
+    def due(self):
+
+        restult = Record.objects.filter(customer=self).aggregate(
+            worked_amount = Coalesce(Sum(
+                ExpressionWrapper(F('rate') * F('pcs'), output_field=DecimalField())
+                ), Value(0), output_field=DecimalField()),
+                total_discount=Coalesce(Sum('discount'), Value(0), output_field=DecimalField()),
+                total_paid=
+                    Coalesce(Sum('allocation__amount'), Value(0), output_field=DecimalField())\
+                      +
+                    Coalesce(Sum('advanceusage__amount'), Value(0), output_field=DecimalField())
+
+    )
+        
+        amount = restult['worked_amount'] or 0
+        discount = restult['total_discount'] or 0
+        paid = restult['total_paid'] or 0
+
+        return amount - discount - paid
 
 class Service(models.Model):
     owner = models.ForeignKey(
@@ -65,7 +98,7 @@ class Service(models.Model):
         unique_together = ("owner", "name")
 
 
-class Rate_Group(models.Model):
+class GroupRate(models.Model):
     group = models.ForeignKey(Groups, on_delete=models.CASCADE)
     service = models.ForeignKey(
         Service,
@@ -89,7 +122,7 @@ class Record(models.Model):
     service = models.ForeignKey(Service, on_delete=models.PROTECT)
     pcs = models.PositiveIntegerField()
     rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    created_at = models.DateField(default=timezone.localdate)
+    created_at = models.DateTimeField(default=timezone.now)
     discount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
@@ -110,11 +143,11 @@ class Record(models.Model):
     def save(self, *args, **kwargs):
         if not self.rate:
             try:
-                rate_obj = Rate_Group.objects.get(
+                rate_obj = GroupRate.objects.get(
                     group=self.customer.group, service=self.service
                 )
                 self.rate = rate_obj.rate
-            except Rate_Group.DoesNotExist:
+            except GroupRate.DoesNotExist:
                 raise ValidationError("No rate defined for this customer and service.")
 
         super().save(*args, **kwargs)
@@ -127,7 +160,7 @@ class Payment(models.Model):
         on_delete=models.PROTECT,
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    created_at = models.DateField(default=timezone.localdate)
+    created_at = models.DateTimeField(default=timezone.now)
     mode = models.CharField(max_length=1, choices=mode_choice, default="c")
     image = CloudinaryField("image", blank=True, null=True)
 
@@ -142,6 +175,7 @@ class Allocation(models.Model):
     record = models.ForeignKey(Record, on_delete=models.CASCADE)
     payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-pk"]
@@ -156,15 +190,15 @@ class Advance(models.Model):
     )
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment = models.ForeignKey(
-        Payment, on_delete=models.SET_NULL, null=True, blank=True
+        Payment, on_delete=models.CASCADE
     )
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-pk"]
 
     def __str__(self) -> str:
-        return f"Customer: {self.customer} Payment: {self.payment} Amount: {self.amount} Date: {self.created_at}"
+        return f"Customer: {self.customer} Payment: {self.payment} Amount: {self.total_amount} Date: {self.created_at}"
 
 
 class AdvanceUsage(models.Model):
@@ -182,18 +216,19 @@ class AdvanceUsage(models.Model):
 
 
 class AuditLog(models.Model):
-    model_choice = [("r", "Record"), ("p", "Payment")]
-    status_choice = [
-        ("a", "Approved"),
-        ("p", "Pending"),
-        ("r", "Rejected"),
+    model_choice = [
+        ("r", "Record"), 
+        ("p", "Payment")
     ]
+
     user = models.ForeignKey(user, on_delete=models.CASCADE)
     before = models.JSONField(null=True, blank=True)
     after = models.JSONField(null=True, blank=True)
     logged_at = models.DateTimeField(default=timezone.now)
     model = models.CharField(max_length=1, choices=model_choice)
-    status = models.CharField(max_length=1, choices=status_choice, default="p")
+    action= models.CharField(max_length=1, choices=[('u', 'UPDATE'), ('d', 'DELETE')])
+    reason = models.TextField(blank=True, null=True)
+
 
     class Meta:
         ordering = ["-pk"]
@@ -207,7 +242,7 @@ class Request(models.Model):
     owner = models.ForeignKey(user, on_delete=models.CASCADE, related_name="requester")
     record = models.ManyToManyField(Record)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    created_at = models.DateField(default=timezone.localdate)
+    created_at = models.DateField(auto_now_add=True)
     reason = models.TextField(blank=True, null=True)
     status = models.CharField(
         max_length=1,
