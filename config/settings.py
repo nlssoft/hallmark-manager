@@ -80,9 +80,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "postgres",
+        "NAME": "manager",
         "USER": "postgres",
-        "PASSWORD": "mypassword",
+        "PASSWORD": "softap",
         "HOST": "localhost",
         "PORT": "5432",
     }
