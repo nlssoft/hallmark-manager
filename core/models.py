@@ -9,6 +9,16 @@ from django.db.models.functions import Coalesce
 user = get_user_model()
 
 
+class Profile(models.Model):
+    owner = models.OneToOneField(
+        user, on_delete=models.CASCADE, related_name="owned_profile"
+    )
+    company_name = models.CharField(max_length=500, null=True, blank=True)
+    company_address = models.TextField(null=True, blank=True)
+    phone_number = models.CharField(max_length=255)
+    address = models.TextField()
+
+
 class Groups(models.Model):
     owner = models.ForeignKey(
         user, on_delete=models.CASCADE, related_name="owned_groups"
@@ -51,38 +61,54 @@ class Customer(models.Model):
     class Meta:
         ordering = ["-pk"]
 
-    #propertyes
-    
+    # propertyes
+
     @property
     def surplus(self):
-        total_advance= Advance.objects.filter(customer=self)\
-            .aggregate(total=Sum('total_amount'))['total'] or 0
-        
-        used= AdvanceUsage.objects.filter(advance__customer=self)\
-            .aggregate(total=Sum('amount'))['total'] or 0
-        
+        total_advance = (
+            Advance.objects.filter(customer=self).aggregate(total=Sum("total_amount"))[
+                "total"
+            ]
+            or 0
+        )
+
+        used = (
+            AdvanceUsage.objects.filter(advance__customer=self).aggregate(
+                total=Sum("amount")
+            )["total"]
+            or 0
+        )
+
         return total_advance - used
-    
+
     @property
     def due(self):
 
         restult = Record.objects.filter(customer=self).aggregate(
-            worked_amount = Coalesce(Sum(
-                ExpressionWrapper(F('rate') * F('pcs'), output_field=DecimalField())
-                ), Value(0), output_field=DecimalField()),
-                total_discount=Coalesce(Sum('discount'), Value(0), output_field=DecimalField()),
-                total_paid=
-                    Coalesce(Sum('allocation__amount'), Value(0), output_field=DecimalField())\
-                      +
-                    Coalesce(Sum('advanceusage__amount'), Value(0), output_field=DecimalField())
+            worked_amount=Coalesce(
+                Sum(
+                    ExpressionWrapper(F("rate") * F("pcs"), output_field=DecimalField())
+                ),
+                Value(0),
+                output_field=DecimalField(),
+            ),
+            total_discount=Coalesce(
+                Sum("discount"), Value(0), output_field=DecimalField()
+            ),
+            total_paid=Coalesce(
+                Sum("allocation__amount"), Value(0), output_field=DecimalField()
+            )
+            + Coalesce(
+                Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
+            ),
+        )
 
-    )
-        
-        amount = restult['worked_amount'] or 0
-        discount = restult['total_discount'] or 0
-        paid = restult['total_paid'] or 0
+        amount = restult["worked_amount"] or 0
+        discount = restult["total_discount"] or 0
+        paid = restult["total_paid"] or 0
 
         return amount - discount - paid
+
 
 class Service(models.Model):
     owner = models.ForeignKey(
@@ -189,9 +215,7 @@ class Advance(models.Model):
         Customer, on_delete=models.SET_NULL, null=True, blank=True
     )
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment = models.ForeignKey(
-        Payment, on_delete=models.CASCADE
-    )
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -216,19 +240,15 @@ class AdvanceUsage(models.Model):
 
 
 class AuditLog(models.Model):
-    model_choice = [
-        ("r", "Record"), 
-        ("p", "Payment")
-    ]
+    model_choice = [("r", "Record"), ("p", "Payment")]
 
     user = models.ForeignKey(user, on_delete=models.CASCADE)
     before = models.JSONField(null=True, blank=True)
     after = models.JSONField(null=True, blank=True)
     logged_at = models.DateTimeField(default=timezone.now)
     model = models.CharField(max_length=1, choices=model_choice)
-    action= models.CharField(max_length=1, choices=[('u', 'UPDATE'), ('d', 'DELETE')])
+    action = models.CharField(max_length=1, choices=[("u", "UPDATE"), ("d", "DELETE")])
     reason = models.TextField(blank=True, null=True)
-
 
     class Meta:
         ordering = ["-pk"]
