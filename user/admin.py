@@ -10,6 +10,10 @@ from django.contrib.admin.sites import NotRegistered
 
 @admin.register(User)
 class UserAdmin(DUserAdmin):
+
+    def get_groups(self, obj):
+        return ", ".join(g.name for g in obj.groups.all())
+
     list_display = (
         'username',
         'email',
@@ -21,6 +25,7 @@ class UserAdmin(DUserAdmin):
         'parent',
         'is_staff',
         'is_active',
+        'get_groups'
     )
 
     search_fields = (
@@ -65,6 +70,11 @@ class UserAdmin(DUserAdmin):
                 'is_superuser',
             ),
         }),
+        ('Groups', {
+            'fields': (
+                'groups',
+            )
+        }),
     )
 
     add_fieldsets = (
@@ -83,3 +93,5 @@ class UserAdmin(DUserAdmin):
             ),
         }),
     )
+
+    get_groups.short_description = 'Groups'
