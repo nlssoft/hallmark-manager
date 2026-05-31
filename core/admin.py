@@ -19,7 +19,7 @@ from .models import (
 from .custome_views import ReadOnlyModelAdmin
 from .form import RecordAdminForm, PaymentAdminForm
 from .json_serializer import serializer_inst
-from .service import PaymentService
+from .money_logic import PaymentService
 
 from django.db import transaction
 from django.db.models import Sum, DecimalField, Value
