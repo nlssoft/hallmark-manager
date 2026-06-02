@@ -2,59 +2,40 @@ from django.core.mail import send_mail
 from django.http import jsonresponse
 
 
-def verified_email(request):
+def send_otp_email(otp, user):
     send_mail(
-        subject= 'Account verified',
-        message= "Your account has been verified.",
-        from_email= "Acme <onboarding@resend.dev>",
+        subject="Verify your email - Hallmark Manager",
+        message="Hi {user.username}, your OTP is: {otp}. expires in 10 minutes.",
+        from_email="Hallmark Manager <onbording@resend.dev>",
+        recipient_list=[user.email],
+        html_message="""
+                <div style="font-family: Arial, sans-serif; max-width: 500px;">
+                    <h2>Hi {user.username},<h2>
+                    <p>Use this otp to verify your account:</p>
+                    <div style="font-size: 36px; font-weight: bold; letter-spacing: 10px;
+                            padding: 20px; background: #f5f5f5; text-align: center;">
+                    {otp}
+                    </div>
+                <p> Expires in <strong>10 minutes<strong>. If you didn't sign up, ignore this.</p>
+            
+                </div>
+""",
+    )
+
+
+def send_verified_email(user):
+    send_mail(
+        subject="Account verified - Hallmark Manager",
+        message="Hi {user.username}, your account has been verified.",
+        from_email="Hallmark Manager <onboarding@resend.dev>",
         recipient_list=["delivered@resend.dev"],
-        html_message= "<p>Your account has been verified.</p>",
+        html_message="""
+                <div style="font-family: Arial, sans-serif; max-width: 500px;">
+                    <h2>Hi {user.username},<h2>
+                    <p>your account has been <strong>successfully verified</strong>.</p>    
+                    <p>Welcome to hallmark Manger!</p>
+                    <p>A clean workspace for your daily workflow.</p>
+                </div>
+                """,
     )
     return jsonresponse({"message": "Email sent successfully"})
-
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#from urllib.parse import urlparse\';[p]
-# from djoser.email import PasswordResetEmail
-# from django.conf import settings
-
-
-# class CustomPasswordResetEmail(PasswordResetEmail):
-#     def get_context_data(self):
-#         context = super().get_context_data()
-#         frontend = urlparse(settings.FRONTEND_URL)
-
-#         context["protocol"] = frontend.scheme
-#         context["domain"] = frontend.netloc
-#         context["url"] = f"reset-password/{context['uid']}/{context['token']}"
-#         return context
-
-

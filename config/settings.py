@@ -10,23 +10,32 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import importlib.util
 from pathlib import Path
+from datetime import timedelta
 import cloudinary
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+env = environ.Env(
+    DEBUG=(bool, False),
+    DJANGO_DEBUG=(bool, False),
+)
+env.read_env(BASE_DIR / ".env")
 
+DEBUG = env.bool("DJANGO_DEBUG", default=env.bool("DEBUG", default=False))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-g(vlw3x=r@7%a_*q3j$lep9p_xpf84vqo3ga@y-g_^&%v!pkak"
+SECRET_KEY = env(
+    "SECRET_KEY",
+    default="dev-only-key" if DEBUG else None,
+)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])
 
 
 # Application definition
@@ -54,7 +63,7 @@ INSTALLED_APPS = [
     "dj_rest_auth",
     # jwt framwork
     "rest_framework_simplejwt.token_blacklist",
-    #email
+    # email
     "anymail",
 ]
 
@@ -67,6 +76,16 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+]
+
+if DEBUG and importlib.util.find_spec("debug_toolbar"):
+    INSTALLED_APPS += ["debug_toolbar"]
+    MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
+
+INTERNAL_IPS = [
+    # ...
+    "127.0.0.1",
+    # ...
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -93,20 +112,10 @@ WSGI_APPLICATION = "config.wsgi.application"
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "postgres",
-        "USER": "postgres",
-        "PASSWORD": "mypassword",
-        "HOST": "localhost",
-        "PORT": "5432",
-    }
-}
-
-CLOUDINARY_STORAGE = {
-    "CLOUD_NAME": "dnylifhkj",
-    "API_KEY": "539541584874636",
-    "API_SECRET": "mwdA3mwucVkotze4hvX9KmyeV6U",
+    "default": env.db(
+        "DATABASE_URL",
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+    )
 }
 
 
@@ -120,9 +129,9 @@ STORAGES = {
 }
 
 cloudinary.config(
-    cloud_name=CLOUDINARY_STORAGE["CLOUD_NAME"],
-    api_key=CLOUDINARY_STORAGE["API_KEY"],
-    api_secret=CLOUDINARY_STORAGE["API_SECRET"],
+    cloud_name=env("CLOUDINARY_CLOUD_NAME"),
+    api_key=env("CLOUDINARY_API_KEY"),
+    api_secret=env("CLOUDINARY_API_SECRET"),
     secure=True,
 )
 
@@ -161,6 +170,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+# STATIC_ROOT= BASE_DIR / 'staticfiles'
 
 
 # setting that I will add
@@ -189,10 +199,9 @@ REST_AUTH = {
     # password related settings
     "PASSWORD_RESET_USE_SITES_DOMAIN": False,
     "OLD_PASSWORD_FIELD_ENABLED": True,
-
     # from here views
-    "REGISTER_SERIALIZER":"user.serializers.CustomeRegisterSerializer",
-    'JWT_SERIALIZER': "user.serializers.CustomeCookieOnlyJwtSerializer"
+    "REGISTER_SERIALIZER": "user.serializers.CustomeRegisterSerializer",
+    "JWT_SERIALIZER": "user.serializers.CustomeCookieOnlyJwtSerializer",
 }
 
 REST_FRAMEWORK = {
@@ -210,7 +219,7 @@ REST_FRAMEWORK = {
 from datetime import timedelta
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=2),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=100),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -220,12 +229,20 @@ SIMPLE_JWT = {
 """
 # settings to add before production
 
+
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-"""
+if not DEBUG:
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)
 
+
+"""
 
 
 PASSWORD_HASHERS = [
@@ -236,8 +253,6 @@ PASSWORD_HASHERS = [
 
 EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 ANYMAIL = {
-    "RESEND_API_KEY":'re_aJ8T5ZdB_PkC5wRGxqvgHqG8TV9uibwPc',
+    "RESEND_API_KEY": "re_aJ8T5ZdB_PkC5wRGxqvgHqG8TV9uibwPc",
 }
 DEFAULT_FROM_EMAIL = "onboarding@resend.dev"
-​
-
