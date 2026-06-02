@@ -13,10 +13,13 @@ class Profile(models.Model):
     owner = models.OneToOneField(
         user, on_delete=models.CASCADE, related_name="owned_profile"
     )
-    company_name = models.CharField(max_length=500, null=True, blank=True)
+    number = models.CharField(max_length=15)
+    company_name = models.CharField(max_length=255, null=True, blank=True)
     company_address = models.TextField(null=True, blank=True)
-    phone_number = models.CharField(max_length=255)
-    address = models.TextField()
+    office_number1 = models.CharField(max_length=15, null=True, blank=True)
+    office_number2= models.CharField(max_length=15, null=True, blank=True)
+    
+   
 
 
 class Groups(models.Model):

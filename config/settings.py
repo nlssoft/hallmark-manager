@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     "dj_rest_auth",
     # jwt framwork
     "rest_framework_simplejwt.token_blacklist",
+    #email
+    "anymail",
 ]
 
 MIDDLEWARE = [
@@ -93,9 +95,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "manager",
+        "NAME": "postgres",
         "USER": "postgres",
-        "PASSWORD": "softap",
+        "PASSWORD": "mypassword",
         "HOST": "localhost",
         "PORT": "5432",
     }
@@ -187,6 +189,10 @@ REST_AUTH = {
     # password related settings
     "PASSWORD_RESET_USE_SITES_DOMAIN": False,
     "OLD_PASSWORD_FIELD_ENABLED": True,
+
+    # from here views
+    "REGISTER_SERIALIZER":"user.serializers.CustomeRegisterSerializer",
+    'JWT_SERIALIZER': "user.serializers.CustomeCookieOnlyJwtSerializer"
 }
 
 REST_FRAMEWORK = {
@@ -221,10 +227,17 @@ CSRF_COOKIE_SECURE = True
 """
 
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-
 
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.Argon2PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
 ]
+
+
+EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+ANYMAIL = {
+    "RESEND_API_KEY":'re_aJ8T5ZdB_PkC5wRGxqvgHqG8TV9uibwPc',
+}
+DEFAULT_FROM_EMAIL = "onboarding@resend.dev"
+​
+
