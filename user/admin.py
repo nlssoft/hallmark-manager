@@ -19,22 +19,22 @@ class UserAdmin(DUserAdmin):
 
     def company_address(self, obj):
         return obj.profile.company_address
-    
+
     def get_groups(self, obj):
         return ", ".join(g.name for g in obj.groups.all())
 
     list_display = (
-        'username',
-        'email',
-        'first_name',
-        'last_name',
-        'phone_number',
-        'company_name',
-        'company_address',
-        'parent',
-        'is_staff',
-        'is_active',
-        'get_groups',
+        "username",
+        "email",
+        "first_name",
+        "last_name",
+        "phone_number",
+        "company_name",
+        "company_address",
+        "parent",
+        "is_staff",
+        "is_active",
+        "get_groups",
     )
 
     search_fields = (
@@ -52,38 +52,46 @@ class UserAdmin(DUserAdmin):
         "is_active",
     )
 
-    fieldsets= (
-        (None, {
-            'fields': ('username', 'password'),
-        }),
-        ('Personal info', {
-            'fields': (
-                'first_name',
-                'last_name',
-                'email',
-                'phone_number',
-                'address',
-            ),
-        }),
-        ('Company info', {
-            'fields': (
-                'company_name',
-                'company_address',
-                'parent',
-            ),
-        }),
-        ('Permissions', {
-            'fields': (
-                'is_active',
-                'is_staff',
-                'is_superuser',
-            ),
-        }),
-        ('Groups', {
-            'fields': (
-                'groups',
-            )
-        }),
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": ("username", "password"),
+            },
+        ),
+        (
+            "Personal info",
+            {
+                "fields": (
+                    "first_name",
+                    "last_name",
+                    "email",
+                    "phone_number",
+                    "address",
+                ),
+            },
+        ),
+        (
+            "Company info",
+            {
+                "fields": (
+                    "company_name",
+                    "company_address",
+                    "parent",
+                ),
+            },
+        ),
+        (
+            "Permissions",
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                ),
+            },
+        ),
+        ("Groups", {"fields": ("groups",)}),
     )
 
     add_fieldsets = (
@@ -105,4 +113,4 @@ class UserAdmin(DUserAdmin):
             },
         ),
     )
-    get_groups.short_description = 'Groups'
+    get_groups.short_description = "Groups"

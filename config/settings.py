@@ -182,6 +182,9 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
+# ALLAUTH
+ACCOUNT_EMAIL_VERIFICATION = "none"
+
 REST_AUTH = {
     # setting old drf token model to none
     "TOKEN_MODEL": None,
@@ -213,6 +216,7 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_THROTTLE_RATES": {
         "dj_rest_auth": "100/hour",
+        "otp_cooldown": "1/min",
     },
 }
 
