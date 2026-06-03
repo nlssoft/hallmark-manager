@@ -257,6 +257,6 @@ PASSWORD_HASHERS = [
 
 EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 ANYMAIL = {
-    "RESEND_API_KEY": "re_aJ8T5ZdB_PkC5wRGxqvgHqG8TV9uibwPc",
+    "RESEND_API_KEY": env("EMAIL_API_KEY"),
 }
-DEFAULT_FROM_EMAIL = "onboarding@resend.dev"
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
