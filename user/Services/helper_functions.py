@@ -1,23 +1,30 @@
-from user.models import OTP, UserOTP
+from user.models import UserOTP
 from django.utils import timezone
 import secrets
+from django.contrib.auth.hashers import make_password
+from django.db import transaction
+
+
+def create_otp(user, task, expires_in_minutes=10):
+    otp_code = str(secrets.randbelow(900000) + 100000)
+    with transaction.atomic():
+        UserOTP.objects.filter(user=user, task=task, used=False).update(used=True)
+        UserOTP.objects.create(
+            user=user,
+            otp=make_password(otp_code),
+            expired_at=timezone.now() + timezone.timedelta(minutes=expires_in_minutes),
+            task=task,
+        )
+    return otp_code
 
 
 def create_otp_for_email_verification(user):
-    otp_code = str(secrets.randbelow(900000) + 100000)
-    otp = OTP.objects.create(
-        otp=otp_code,
-        expired_at=timezone.now() + timezone.timedelta(minutes=10),
-    )
-    UserOTP.objects.create(user=user, for_otp=otp, task=UserOTP.Task.EMAIL_VERIFICATION)
-    return otp_code
+    return create_otp(user, UserOTP.Task.EMAIL_VERIFICATION)
 
 
 def create_otp_for_password_reset(user):
-    otp_code = str(secrets.randbelow(900000) + 100000)
-    otp = OTP.objects.create(
-        otp=otp_code,
-        expired_at=timezone.now() + timezone.timedelta(minutes=2),
-    )
-    UserOTP.objects.create(user=user, for_otp=otp, task=UserOTP.Task.PASSWORD_RESET)
-    return otp_code
+    return create_otp(user, UserOTP.Task.PASSWORD_RESET)
+
+
+def create_otp_for_email_change(user):
+    return create_otp(user, UserOTP.Task.EMAIL_CHANGE)

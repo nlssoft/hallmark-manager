@@ -1,20 +1,19 @@
 # cls
-from .models import User, OTP, UserOTP
-from core.models import Profile
+from .models import User, UserOTP
+from core.serializers import ProfileSerializer
 
 # import cls
 from dj_rest_auth.registration.serializers import RegisterSerializer
-from dj_rest_auth.serializers import JWTSerializer
+from dj_rest_auth.serializers import JWTSerializer, UserDetailsSerializer
 
 # tools
-from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import check_password
 from rest_framework import serializers
 from django.db import transaction
-from django.core.exceptions import ValidationError
 from django.db.models import F
 
 
-class CustomeCookieOnlyJwtSerializer(JWTSerializer):
+class CustomCookieOnlyJwtSerializer(JWTSerializer):
     def to_representation(self, instance):
         response = super().to_representation(instance)
         response.pop("access", None)
@@ -22,7 +21,7 @@ class CustomeCookieOnlyJwtSerializer(JWTSerializer):
         return response
 
 
-class CustomeRegisterSerializer(RegisterSerializer):
+class CustomRegisterSerializer(RegisterSerializer):
     number = serializers.CharField(max_length=15)
     company_name = serializers.CharField(
         max_length=255, required=False, allow_blank=True
@@ -42,7 +41,8 @@ class CustomeRegisterSerializer(RegisterSerializer):
     # things like username, password, email are already handle by dj_rest_auth we just need to set what is not!!!
 
     def validate_email(self, email):
-        if User.objects.filter(email=email).exists():
+        email = email.strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return email
 
@@ -84,37 +84,89 @@ class VerifyEmailOTPSerializer(serializers.Serializer):
             raise serializers.ValidationError({"email": "Email is already verified."})
 
         # get the latest otp for this user from system
-        user_otp = (
-            UserOTP.objects.filter(user=user, task=UserOTP.Task.EMAIL_VERIFICATION)
-            .select_related("for_otp")
-            .first()
-        )
+        user_otp = UserOTP.objects.filter(
+            user=user, task=UserOTP.Task.EMAIL_VERIFICATION
+        ).first()
 
         if not user_otp:
             raise serializers.ValidationError(
                 {"otp": "No OTP found. Please register again."}
             )
 
-        otp_obj = user_otp.for_otp
-
-        if otp_obj.failed_attempts >= 3:
+        if user_otp.failed_attempts >= 3:
             raise serializers.ValidationError(
                 {"otp": "Maximum OTP attempts exceeded. Request a new OTP."}
             )
 
         # 4. Expired?
-        if not otp_obj.is_valid():
+        if not user_otp.is_valid():
             raise serializers.ValidationError(
                 {"otp": "OTP expired. Please request a new OTP."}
             )
 
         # 5. Match?
-        if otp_obj.otp != attrs["otp"]:
-            otp_obj.failed_attempts = F("failed_attempts") + 1
-            otp_obj.save(update_fields=["failed_attempts"])
-            otp_obj.refresh_from_db(fields=["failed_attempts"])
+        if not check_password(attrs["otp"], user_otp.otp):
+            user_otp.failed_attempts = F("failed_attempts") + 1
+            user_otp.save(update_fields=["failed_attempts"])
+            user_otp.refresh_from_db(fields=["failed_attempts"])
+
             raise serializers.ValidationError({"otp": "Invalid OTP."})
 
         attrs["user"] = user
-        attrs["otp_obj"] = otp_obj
+        attrs["user_otp"] = user_otp
         return attrs
+
+
+class UserSerializer(UserDetailsSerializer):
+    profile = ProfileSerializer()
+
+    class Meta(UserDetailsSerializer.Meta):
+        fields = (
+            "pk",
+            "username",
+            "email",
+            "profile",
+        )
+
+    def validate_username(self, value):
+        qs = User.objects.filter(username=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "A user with that username already exists."
+            )
+        return value
+
+    def update(self, instance, validated_data):
+        profile_data = validated_data.get("profile", None)
+        email = validated_data.get("emai", None)
+
+        if instance.email != email:
+            instance.username = validated_data.get("username", instance.username)
+            instance.pending_email = email
+            instance.email_verified = False
+            instance.save()
+
+            profile = instance.profile
+
+            for attr, value in profile_data.items():
+                setattr(profile, attr, value)
+
+            profile.save()
+
+            return instance
+        else:
+            instance.username = validated_data.get("username", instance.username)
+            instance.email = validated_data.get("email", instance.email)
+
+            instance.save()
+
+            profile = instance.profile
+
+            for attr, value in profile_data.items():
+                setattr(profile, attr, value)
+
+            profile.save()
+
+            return instance

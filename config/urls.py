@@ -17,20 +17,30 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
-from user.views import CustomRegisterView, VerifyOTPView, ResendOTPView
+from user.views import (
+    CustomRegisterView,
+    VerifyOTPView,
+    ResendOTPView,
+    CustomCookieTokenRefreshView,
+)
 from django.conf import settings
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("auth/accounts/", include("allauth.urls")),
-    path("auth/", include("dj_rest_auth.urls")),
-    path("auth/registration/", CustomRegisterView.as_view()),
+    path(
+        "auth/token/refresh/",
+        CustomCookieTokenRefreshView.as_view(),
+        name="token_refresh",
+    ),
     path(
         "auth/verify-email/",
         VerifyOTPView.as_view(),
         name="account_email_verification_sent",
     ),
     path("auth/resend-otp/", ResendOTPView.as_view()),
+    path("auth/accounts/", include("allauth.urls")),
+    path("auth/", include("dj_rest_auth.urls")),
+    path("auth/registration/", CustomRegisterView.as_view()),
 ]
 
 if settings.DEBUG:

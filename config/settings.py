@@ -111,12 +111,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    "default": env.db(
-        "DATABASE_URL",
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
-    )
-}
+DATABASES = {"default": env.db()}
 
 
 STORAGES = {
@@ -195,16 +190,17 @@ REST_AUTH = {
     "JWT_AUTH_HTTPONLY": True,
     "JWT_AUTH_SECURE": False,  # True in production
     "JWT_AUTH_SAMESITE": "Strict",
-    "JWT_AUTH_REFRESH_COOKIE_PATH": "auth/token/refresh",
+    "JWT_AUTH_REFRESH_COOKIE_PATH": "/auth/",
     # csrf related settings
     "JWT_AUTH_COOKIE_USE_CSRF": True,
     "JWT_AUTH_COOKIE_ENFORCE_CSRF_ON_UNAUTHENTICATED": False,  # after done with project make it True for more secure deployment
     # password related settings
     "PASSWORD_RESET_USE_SITES_DOMAIN": False,
     "OLD_PASSWORD_FIELD_ENABLED": True,
-    # from here views
-    "REGISTER_SERIALIZER": "user.serializers.CustomeRegisterSerializer",
-    "JWT_SERIALIZER": "user.serializers.CustomeCookieOnlyJwtSerializer",
+    # from here serializers
+    "REGISTER_SERIALIZER": "user.serializers.CustomRegisterSerializer",
+    "JWT_SERIALIZER": "user.serializers.CustomCookieOnlyJwtSerializer",
+    "USER_DETAILS_SERIALIZER": "user.serializers.UserSerializer",
 }
 
 REST_FRAMEWORK = {
