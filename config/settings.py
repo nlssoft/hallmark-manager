@@ -171,6 +171,7 @@ STATIC_URL = "static/"
 # setting that I will add
 SITE_ID = 1
 AUTH_USER_MODEL = "user.User"
+PASSWORD_RESET_CONFIRM_URL = "reset-password/{uid}/{token}"
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",

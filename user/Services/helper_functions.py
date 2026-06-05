@@ -23,8 +23,12 @@ def create_otp_for_email_verification(user):
 
 
 def create_otp_for_password_reset(user):
-    return create_otp(user, UserOTP.Task.PASSWORD_RESET)
+    return create_otp(user, UserOTP.Task.PASSWORD_RESET, expires_in_minutes=2)
 
 
 def create_otp_for_email_change(user):
     return create_otp(user, UserOTP.Task.EMAIL_CHANGE)
+
+
+def create_otp_for_password_update(user):
+    return create_otp(user, UserOTP.Task.PASSWORD_RESET, expires_in_minutes=2)

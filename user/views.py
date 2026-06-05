@@ -2,13 +2,13 @@ from django.db import transaction
 from django.utils import timezone
 from dj_rest_auth.registration.views import RegisterView
 from rest_framework import generics, status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 
 from .models import User, UserOTP
-from .serializers import VerifyEmailOTPSerializer
+from .serializers import VerifyEmailOTPSerializer, ChangeEmailOTPSerializer
 from .Services.emails import (
     send_otp_email_registration,
     send_verified_email,
@@ -51,7 +51,7 @@ class CustomRegisterView(RegisterView):
         )
 
 
-class VerifyOTPView(generics.GenericAPIView):
+class VerifyEmailOTPView(generics.GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = VerifyEmailOTPSerializer
 
@@ -73,7 +73,7 @@ class VerifyOTPView(generics.GenericAPIView):
         return Response({"message": "Account verified. You can now log in."})
 
 
-class ResendOTPView(APIView):
+class ResendVerifyEmailOTPView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [OTPCooldownThrottling]
 
@@ -117,22 +117,80 @@ class ResendOTPView(APIView):
 class CustomUserDetailView(UserDetailsView):
 
     def update(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_excetion=True)
-
         with transaction.atomic():
-            user = serializer.save(self.request)
-            if user.pending_email:
+            partial = kwargs.pop("partial", False)
+            instance = self.get_object()  # ← get the user
+            serializer = self.get_serializer(
+                instance, data=request.data, partial=partial
+            )
+            serializer.is_valid(raise_exception=True)
+            new_email = serializer.validated_data.get("email")
+            email_changed = new_email is not None and instance.email != new_email
+
+            user = serializer.save()
+            if email_changed:
                 otp = create_otp_for_email_change(user)
                 send_otp_email_change(otp, user)
                 return Response(
                     {
-                        "message": "Profile updated. An OTP has been sent to your new email address to verify the change."
+                        "message": "Profile updated. An OTP has been sent to your new email address to verify the updated email."
                     },
                     status=status.HTTP_201_CREATED,
                 )
             else:
                 return Response(
-                    {"message": "Profile updated successfully."},
+                    self.get_serializer(user).data,
                     status=status.HTTP_200_OK,
                 )
+
+
+class ResendChangeEmailOTPView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [OTPCooldownThrottling]
+
+    def get(self, request):
+        return Response({"message": "Use POST to resend OTP."})
+
+    def post(self, request):
+        user = request.user
+
+        today_otp_count = UserOTP.objects.filter(
+            user=user,
+            task=UserOTP.Task.EMAIL_CHANGE,
+            created_at__date=timezone.now().date(),
+        ).count()
+
+        if today_otp_count >= 3:
+            return Response(
+                {"message": "Daily OTP limit reached. Try again tomorrow."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        otp = create_otp_for_email_change(user)
+        send_otp_email_change(otp, user)
+        return Response(
+            {"message": "If an account exists, an OTP has been sent."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ChangeEmailOTPView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangeEmailOTPSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data["user"]
+        user_otp = serializer.validated_data["user_otp"]
+
+        user_otp.used = True
+        user_otp.save(update_fields=["used"])
+
+        user.email_verified = True
+        user.email = user.pending_email
+        user.pending_email = None
+        user.save(update_fields=["email", "pending_email", "email_verified"])
+
+        return Response({"message": "Account verified. You can now log in."})

@@ -119,11 +119,14 @@ class VerifyEmailOTPSerializer(serializers.Serializer):
 
 class UserSerializer(UserDetailsSerializer):
     profile = ProfileSerializer()
+    email = serializers.EmailField(required=True)
 
     class Meta(UserDetailsSerializer.Meta):
         fields = (
             "pk",
             "username",
+            "first_name",
+            "last_name",
             "email",
             "profile",
         )
@@ -138,18 +141,31 @@ class UserSerializer(UserDetailsSerializer):
             )
         return value
 
+    def validate_email(self, email):
+        email = email.strip().lower()
+        qs = User.objects.filter(email__iexact=email)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return email
+
     def update(self, instance, validated_data):
         profile_data = validated_data.get("profile", None)
-        email = validated_data.get("emai", None)
+        email = validated_data.get("email", instance.email)
 
         if instance.email != email:
             instance.username = validated_data.get("username", instance.username)
+            instance.first_name = validated_data.get("first_name", instance.first_name)
+            instance.last_name = validated_data.get("last_name", instance.last_name)
             instance.pending_email = email
             instance.email_verified = False
             instance.save()
 
-            profile = instance.profile
+            if profile_data is None:
+                return instance
 
+            profile = instance.profile
             for attr, value in profile_data.items():
                 setattr(profile, attr, value)
 
@@ -158,15 +174,65 @@ class UserSerializer(UserDetailsSerializer):
             return instance
         else:
             instance.username = validated_data.get("username", instance.username)
+            instance.first_name = validated_data.get("first_name", instance.first_name)
+            instance.last_name = validated_data.get("last_name", instance.last_name)
             instance.email = validated_data.get("email", instance.email)
 
             instance.save()
 
-            profile = instance.profile
+            if profile_data is None:
+                return instance
 
+            profile = instance.profile
             for attr, value in profile_data.items():
                 setattr(profile, attr, value)
 
             profile.save()
 
             return instance
+
+
+class ChangeEmailOTPSerializer(serializers.Serializer):
+    otp = serializers.CharField(max_length=6, min_length=6)
+
+    def validate(self, attrs):
+
+        # get user from contexts
+        user = self.context["request"].user
+
+        # check already verified
+        if not user.pending_email:
+            raise serializers.ValidationError({"email": "No pending email to verify."})
+
+        # get the latest otp for this user from system
+        user_otp = UserOTP.objects.filter(
+            user=user, task=UserOTP.Task.EMAIL_CHANGE
+        ).first()
+
+        if not user_otp:
+            raise serializers.ValidationError(
+                {"otp": "No OTP found. Please try again later."}
+            )
+
+        if user_otp.failed_attempts >= 3:
+            raise serializers.ValidationError(
+                {"otp": "Maximum OTP attempts exceeded. Request a new OTP."}
+            )
+
+        # 4. Expired?
+        if not user_otp.is_valid():
+            raise serializers.ValidationError(
+                {"otp": "OTP expired. Please request a new OTP."}
+            )
+
+        # 5. Match?
+        if not check_password(attrs["otp"], user_otp.otp):
+            user_otp.failed_attempts = F("failed_attempts") + 1
+            user_otp.save(update_fields=["failed_attempts"])
+            user_otp.refresh_from_db(fields=["failed_attempts"])
+
+            raise serializers.ValidationError({"otp": "Invalid OTP."})
+
+        attrs["user"] = user
+        attrs["user_otp"] = user_otp
+        return attrs

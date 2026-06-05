@@ -17,28 +17,32 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from dj_rest_auth.views import PasswordResetConfirmView
 from user.views import (
     CustomRegisterView,
-    VerifyOTPView,
-    ResendOTPView,
+    VerifyEmailOTPView,
+    ResendVerifyEmailOTPView,
     CustomCookieTokenRefreshView,
+    CustomUserDetailView,
+    ChangeEmailOTPView,
+    ResendChangeEmailOTPView,
 )
 from django.conf import settings
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path(
-        "auth/token/refresh/",
-        CustomCookieTokenRefreshView.as_view(),
-        name="token_refresh",
-    ),
-    path(
-        "auth/verify-email/",
-        VerifyOTPView.as_view(),
-        name="account_email_verification_sent",
-    ),
-    path("auth/resend-otp/", ResendOTPView.as_view()),
+    path("auth/token/refresh/", CustomCookieTokenRefreshView.as_view()),
+    path("auth/verify-email/", VerifyEmailOTPView.as_view()),
+    path("auth/resend-verify-email-otp/", ResendVerifyEmailOTPView.as_view()),
+    path("auth/change-email/", ChangeEmailOTPView.as_view()),
+    path("auth/resend-change-email/", ResendChangeEmailOTPView.as_view()),
     path("auth/accounts/", include("allauth.urls")),
+    path("auth/user/", CustomUserDetailView.as_view(), name="rest_user_details"),
+    path(
+        "auth/password/reset/confirm/<uidb64>/<token>/",
+        PasswordResetConfirmView.as_view(),
+        name="password_reset_confirm",
+    ),
     path("auth/", include("dj_rest_auth.urls")),
     path("auth/registration/", CustomRegisterView.as_view()),
 ]
