@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
+from .managers import EmployeeManager
 
 
 class User(AbstractUser):
@@ -18,6 +19,13 @@ class User(AbstractUser):
 
     class Meta:
         ordering = ["-pk"]
+
+
+class Employee(User):
+    objects = EmployeeManager()
+
+    class Meta:
+        proxy = True
 
 
 class UserOTP(models.Model):

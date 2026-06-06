@@ -30,21 +30,24 @@ from user.views import (
 from django.conf import settings
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    # custom auth endpoints
     path("auth/token/refresh/", CustomCookieTokenRefreshView.as_view()),
     path("auth/verify-email/", VerifyEmailOTPView.as_view()),
     path("auth/resend-verify-email-otp/", ResendVerifyEmailOTPView.as_view()),
     path("auth/change-email/", ChangeEmailOTPView.as_view()),
     path("auth/resend-change-email/", ResendChangeEmailOTPView.as_view()),
-    path("auth/accounts/", include("allauth.urls")),
     path("auth/user/", CustomUserDetailView.as_view(), name="rest_user_details"),
     path(
         "auth/password/reset/confirm/<uidb64>/<token>/",
         PasswordResetConfirmView.as_view(),
         name="password_reset_confirm",
     ),
+    # librais
+    path("admin/", admin.site.urls),
     path("auth/", include("dj_rest_auth.urls")),
     path("auth/registration/", CustomRegisterView.as_view()),
+    # apps
+    path("user/", include("user.urls")),
 ]
 
 if settings.DEBUG:

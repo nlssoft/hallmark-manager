@@ -1,5 +1,5 @@
 # cls
-from .models import User, UserOTP
+from .models import User, UserOTP, Employee
 from core.serializers import ProfileSerializer
 
 # import cls
@@ -8,9 +8,10 @@ from dj_rest_auth.serializers import JWTSerializer, UserDetailsSerializer
 
 # tools
 from django.contrib.auth.hashers import check_password
-from rest_framework import serializers
 from django.db import transaction
 from django.db.models import F
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 
 class CustomCookieOnlyJwtSerializer(JWTSerializer):
@@ -236,3 +237,38 @@ class ChangeEmailOTPSerializer(serializers.Serializer):
         attrs["user"] = user
         attrs["user_otp"] = user_otp
         return attrs
+
+
+class EmployeeSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+    re_password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = Employee
+        fields = [
+            "username",
+            "password",
+            "re_password",
+            "email",
+        ]
+
+    def validate(self, attrs):
+        password = attrs.get("password", None)
+        re_password = attrs.pop("re_password", None)
+
+        if password != re_password:
+            raise ValidationError({"message": "Password do not match."})
+
+        return attrs
+
+    def create(self, validated_data):
+        
+        password = validated_data.pop("password", None)
+
+        employee = Employee.objects.create(**validated_data, parent)
+        employee.is_active = False
+        employee.email_verified = False
+        employee.set_password(password)
+        employee.save()
+
+        return employee

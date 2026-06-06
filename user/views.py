@@ -5,10 +5,20 @@ from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.mixins import (
+    ListModelMixin,
+    CreateModelMixin,
+    DestroyModelMixin,
+    RetrieveModelMixin,
+)
+from rest_framework.viewsets import GenericViewSet
 
-
-from .models import User, UserOTP
-from .serializers import VerifyEmailOTPSerializer, ChangeEmailOTPSerializer
+from .models import User, UserOTP, Employee
+from .serializers import (
+    VerifyEmailOTPSerializer,
+    ChangeEmailOTPSerializer,
+    EmployeeSerializer,
+)
 from .Services.emails import (
     send_otp_email_registration,
     send_verified_email,
@@ -17,7 +27,6 @@ from .Services.emails import (
 from .Services.helper_functions import (
     create_otp_for_email_verification,
     create_otp_for_email_change,
-    create_otp_for_password_reset,
 )
 from .Services.throttles import OTPCooldownThrottling
 from dj_rest_auth.jwt_auth import get_refresh_view
@@ -45,10 +54,12 @@ class CustomRegisterView(RegisterView):
             otp = create_otp_for_email_verification(user)
             send_otp_email_registration(otp, user)
 
-        return Response(
-            {"message": "OTP sent to your email. Please verify to complete signup."},
-            status=status.HTTP_201_CREATED,
-        )
+            return Response(
+                {
+                    "message": "OTP sent to your email. Please verify to complete signup."
+                },
+                status=status.HTTP_201_CREATED,
+            )
 
 
 class VerifyEmailOTPView(generics.GenericAPIView):
@@ -194,3 +205,33 @@ class ChangeEmailOTPView(generics.GenericAPIView):
         user.save(update_fields=["email", "pending_email", "email_verified"])
 
         return Response({"message": "Account verified. You can now log in."})
+
+
+class EmployeeView(
+    ListModelMixin,
+    RetrieveModelMixin,
+    CreateModelMixin,
+    DestroyModelMixin,
+    GenericViewSet,
+):
+    serializer_class = EmployeeSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Employee.objects.filter(parent=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            user = serializer.save()
+            otp = create_otp_for_email_verification(user)
+            send_otp_email_registration(otp, user)
+
+            return Response(
+                {
+                    "message": "OTP sent to your email. Please verify to complete signup."
+                },
+                status=status.HTTP_201_CREATED,
+            )

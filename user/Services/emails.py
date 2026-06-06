@@ -5,7 +5,7 @@ from rest_framework.exceptions import APIException
 
 class EmailSendFailed(APIException):
     status_code = 503
-    default_detail = "Could not send email. Changes were not saved."
+    default_detail = "Could not send email. Please try again later"
     default_code = "email_send_failed"
 
 
