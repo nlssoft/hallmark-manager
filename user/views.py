@@ -13,6 +13,11 @@ from rest_framework.mixins import (
 )
 from rest_framework.viewsets import GenericViewSet
 
+from rest_framework_simplejwt.token_blacklist.models import (
+    OutstandingToken,
+    BlacklistedToken,
+)
+from core.permissions import ParentAccount
 from .models import User, UserOTP, Employee
 from .serializers import (
     VerifyEmailOTPSerializer,
@@ -31,6 +36,7 @@ from .Services.helper_functions import (
 from .Services.throttles import OTPCooldownThrottling
 from dj_rest_auth.jwt_auth import get_refresh_view
 from dj_rest_auth.views import UserDetailsView
+from rest_framework.decorators import action
 
 BaseRefreshView = get_refresh_view()
 
@@ -215,7 +221,7 @@ class EmployeeView(
     GenericViewSet,
 ):
     serializer_class = EmployeeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [ParentAccount]
 
     def get_queryset(self):
         return Employee.objects.filter(parent=self.request.user)
@@ -235,3 +241,28 @@ class EmployeeView(
                 },
                 status=status.HTTP_201_CREATED,
             )
+
+    @action(detail=True, methods=["post"])
+    def ban(self, request, pk=None):
+        employee = self.get_object()
+
+        employee.is_active = False
+        employee.save(update_fields=["is_active"])
+
+        # access is handle by simple jwt as it checks on every request -  user.is_active
+        # refresh blaclisting is not needed but still the code below is profesniol cleanup.
+
+        tokens = OutstandingToken.objects.filter(user=employee)
+        for token in tokens:
+            BlacklistedToken.objects.get_or_create(token=token)
+
+        return Response({"message": "Employee banned."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"])
+    def unban(self, request, pk=None):
+        employee = self.get_object()
+
+        employee.is_active = True
+        employee.save(update_fields=["is_active"])
+
+        return Response({"message": "Employee is unbanned."}, status=status.HTTP_200_OK)

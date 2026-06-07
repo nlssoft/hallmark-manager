@@ -1,5 +1,6 @@
 # cls
 from .models import User, UserOTP, Employee
+from core.models import Profile
 from core.serializers import ProfileSerializer
 
 # import cls
@@ -36,8 +37,6 @@ class CustomRegisterSerializer(RegisterSerializer):
     office_number2 = serializers.CharField(
         max_length=15, required=False, allow_blank=True
     )
-    first_name = serializers.CharField(max_length=100)
-    last_name = serializers.CharField(max_length=100)
 
     # things like username, password, email are already handle by dj_rest_auth we just need to set what is not!!!
 
@@ -50,9 +49,6 @@ class CustomRegisterSerializer(RegisterSerializer):
     def save(self, request):
         with transaction.atomic():
             user = super().save(request)
-
-            user.first_name = self.validated_data["first_name"]
-            user.last_name = self.validated_data["last_name"]
             user.is_active = False
             user.save()
 
@@ -119,15 +115,13 @@ class VerifyEmailOTPSerializer(serializers.Serializer):
 
 
 class UserSerializer(UserDetailsSerializer):
-    profile = ProfileSerializer()
+    profile = ProfileSerializer(required=False, allow_null=True)
     email = serializers.EmailField(required=True)
 
     class Meta(UserDetailsSerializer.Meta):
         fields = (
             "pk",
             "username",
-            "first_name",
-            "last_name",
             "email",
             "profile",
         )
@@ -157,8 +151,6 @@ class UserSerializer(UserDetailsSerializer):
 
         if instance.email != email:
             instance.username = validated_data.get("username", instance.username)
-            instance.first_name = validated_data.get("first_name", instance.first_name)
-            instance.last_name = validated_data.get("last_name", instance.last_name)
             instance.pending_email = email
             instance.email_verified = False
             instance.save()
@@ -175,8 +167,6 @@ class UserSerializer(UserDetailsSerializer):
             return instance
         else:
             instance.username = validated_data.get("username", instance.username)
-            instance.first_name = validated_data.get("first_name", instance.first_name)
-            instance.last_name = validated_data.get("last_name", instance.last_name)
             instance.email = validated_data.get("email", instance.email)
 
             instance.save()
@@ -246,26 +236,33 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
+            "pk",
             "username",
             "password",
             "re_password",
             "email",
         ]
+        read_only_fields = ["pk"]
 
     def validate(self, attrs):
         password = attrs.get("password", None)
         re_password = attrs.pop("re_password", None)
+        user = self.context["request"].user
+
+        if user.parent:
+            raise ValidationError({"message": "Employee can not create employees."})
 
         if password != re_password:
             raise ValidationError({"message": "Password do not match."})
 
+        attrs["parent"] = user
         return attrs
 
     def create(self, validated_data):
-        
+
         password = validated_data.pop("password", None)
 
-        employee = Employee.objects.create(**validated_data, parent)
+        employee = Employee.objects.create(**validated_data)
         employee.is_active = False
         employee.email_verified = False
         employee.set_password(password)

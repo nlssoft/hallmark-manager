@@ -26,8 +26,6 @@ class UserAdmin(DUserAdmin):
     list_display = (
         "username",
         "email",
-        "first_name",
-        "last_name",
         "phone_number",
         "company_name",
         "company_address",
@@ -40,8 +38,6 @@ class UserAdmin(DUserAdmin):
     search_fields = (
         "username",
         "email",
-        "first_name",
-        "last_name",
         "phone_number",
         "company_name",
     )
@@ -63,8 +59,6 @@ class UserAdmin(DUserAdmin):
             "Personal info",
             {
                 "fields": (
-                    "first_name",
-                    "last_name",
                     "email",
                     "phone_number",
                     "address",
