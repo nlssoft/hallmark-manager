@@ -20,12 +20,15 @@ class User(AbstractUser):
     class Meta:
         ordering = ["-pk"]
 
+    def __str__(self):
+        return f"{self.username}"
 
 class Employee(User):
     objects = EmployeeManager()
 
     class Meta:
         proxy = True
+
 
 
 class UserOTP(models.Model):

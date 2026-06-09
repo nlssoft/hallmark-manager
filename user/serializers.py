@@ -1,7 +1,6 @@
 # cls
 from .models import User, UserOTP, Employee
 from core.models import Profile
-from core.serializers import ProfileSerializer
 
 # import cls
 from dj_rest_auth.registration.serializers import RegisterSerializer
@@ -13,6 +12,20 @@ from django.db import transaction
 from django.db.models import F
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = (
+            "number",
+            "company_name",
+            "company_address",
+            "office_number1",
+            "office_number2",
+        )
+
 
 
 class CustomCookieOnlyJwtSerializer(JWTSerializer):
@@ -269,3 +282,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
         employee.save()
 
         return employee
+
+
+class ReadOnlyEmployeeSerializer(EmployeeSerializer):
+    class Meta(EmployeeSerializer.Meta):
+        read_only_fields = EmployeeSerializer.Meta.fields

@@ -43,6 +43,10 @@ class GroupAdmin(admin.ModelAdmin):
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
+
+    def get_assigned_to(self, obj):
+        return ", ".join(str(e) for e in obj.assigned_to.all())
+
     list_display = [
         "owner",
         "logo",
@@ -50,7 +54,7 @@ class CustomerAdmin(admin.ModelAdmin):
         "number",
         "email",
         "address",
-        "assigned_to",
+        "get_assigned_to",
         "group",
         "due",
         "surplus",
@@ -68,6 +72,8 @@ class CustomerAdmin(admin.ModelAdmin):
         if request.user.parent:
             return Customer.objects.filter(assigned_to=request.user)
         return Customer.objects.filter(owner=request.user)
+
+    get_assigned_to.short_description = "Assigned To"
 
 
 @admin.register(Service)

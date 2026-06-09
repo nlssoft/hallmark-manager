@@ -48,11 +48,24 @@ urlpatterns = [
     path("auth/registration/", CustomRegisterView.as_view()),
     # apps
     path("user/", include("user.urls")),
+    path("core/", include("core.urls")),
+
 ]
 
 if settings.DEBUG:
     import debug_toolbar
+    from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+    from django.views.decorators.csrf import ensure_csrf_cookie
+    from django.http import JsonResponse
+
+    @ensure_csrf_cookie
+    def csrf_token_view(request):
+        return JsonResponse({'detail': 'ok'})
 
     urlpatterns += [
         path("__debug__/", include(debug_toolbar.urls)),
+        path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+        path('api/schema/swagger/', SpectacularSwaggerView.as_view(url_name='schema')),
+        path('csrf/', csrf_token_view),
+
     ]

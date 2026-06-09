@@ -49,10 +49,7 @@ class PaymentService:
             )
             
             # minus the avilable amount from due so at some point nothing exists
-            due -= used
-
-
-        
+            due -= used       
 
     @staticmethod
     def allocate(payment):
