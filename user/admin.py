@@ -2,17 +2,24 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DUserAdmin
 
 
-from .models import User
+from .models import User, Profile
 
 # need to think about what to do???
 from django.contrib.auth.models import Group
 from django.contrib.admin.sites import NotRegistered
 
 
+class ProfileAdmin(admin.StackedInline):
+    model = Profile
+    can_delete = False
+
+
 @admin.register(User)
 class UserAdmin(DUserAdmin):
+    inlines = [ProfileAdmin]
+
     def phone_number(self, obj):
-        return obj.profile.phone_number
+        return obj.profile.number
 
     def company_name(self, obj):
         return obj.profile.company_name
@@ -58,21 +65,7 @@ class UserAdmin(DUserAdmin):
         (
             "Personal info",
             {
-                "fields": (
-                    "email",
-                    "phone_number",
-                    "address",
-                ),
-            },
-        ),
-        (
-            "Company info",
-            {
-                "fields": (
-                    "company_name",
-                    "company_address",
-                    "parent",
-                ),
+                "fields": ("email", "email_verified", "parent"),
             },
         ),
         (
@@ -96,8 +89,8 @@ class UserAdmin(DUserAdmin):
                 "fields": (
                     "username",
                     "email",
-                    "phone_number",
-                    "address",
+                    "email_verified",
+                    "parent",
                     "password1",
                     "password2",
                     "is_active",

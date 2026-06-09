@@ -23,12 +23,21 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.username}"
 
+
 class Employee(User):
     objects = EmployeeManager()
 
     class Meta:
         proxy = True
 
+
+class Profile(models.Model):
+    owner = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    number = models.CharField(max_length=15, null=True, blank=True)
+    company_name = models.CharField(max_length=255, null=True, blank=True)
+    company_address = models.TextField(null=True, blank=True)
+    office_number1 = models.CharField(max_length=15, null=True, blank=True)
+    office_number2 = models.CharField(max_length=15, null=True, blank=True)
 
 
 class UserOTP(models.Model):

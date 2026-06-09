@@ -1,6 +1,5 @@
 # cls
-from .models import User, UserOTP, Employee
-from core.models import Profile
+from .models import User, Employee, Profile, UserOTP
 
 # import cls
 from dj_rest_auth.registration.serializers import RegisterSerializer
@@ -14,7 +13,6 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
 
-
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
@@ -25,7 +23,6 @@ class ProfileSerializer(serializers.ModelSerializer):
             "office_number1",
             "office_number2",
         )
-
 
 
 class CustomCookieOnlyJwtSerializer(JWTSerializer):

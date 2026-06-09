@@ -18,38 +18,44 @@ class PaymentService:
     def advance_allocate(record):
         customer = record.customer
         due = record.amount - ((record.discount or 0))
-     
+
         if due <= 0:
             return
-        
+
         # all advance row that exists
-        advance_query_set = Advance.objects.filter(customer=customer).order_by('created_at')
+        advance_query_set = Advance.objects.filter(customer=customer).order_by(
+            "created_at"
+        )
 
         for advance in advance_query_set:
             # if ever due goes beneth 0 break the loop
             if due <= 0:
                 break
-            
+
             # for this advance what amount is still unallocated
-            used_already = AdvanceUsage.objects.filter(advance=advance)\
-                .aggregate(total = Sum('amount'))['total'] or 0
-            
-            available= advance.total_amount - used_already
+            used_already = (
+                AdvanceUsage.objects.filter(advance=advance).aggregate(
+                    total=Sum("amount")
+                )["total"]
+                or 0
+            )
+
+            available = advance.total_amount - used_already
 
             # if there is none then skip this advance row and move to next row
             if available <= 0:
                 continue
 
-            used = min(available, due )
+            used = min(available, due)
 
             AdvanceUsage.objects.create(
                 advance=advance,
-                amount= used,
-                record= record,
+                amount=used,
+                record=record,
             )
-            
+
             # minus the avilable amount from due so at some point nothing exists
-            due -= used       
+            due -= used
 
     @staticmethod
     def allocate(payment):
@@ -84,9 +90,21 @@ class PaymentService:
 
             remains -= allocated
 
-        #advance allocation
+        # advance allocation
         if remains > 0:
             PaymentService.advance_create(payment, remains)
+
+    @staticmethod
+    def allocate_selected(records):
+
+        for record in records:
+            payment = Payment.objects.create(
+                customer=record.customer, amount=record._due, mode="c"
+            )
+            Allocation.objects.create(
+                payment=payment, record=record, amount=payment.amount
+            )
+
 
     @staticmethod
     def rollback(payment):
@@ -97,3 +115,8 @@ class PaymentService:
     def rollback_plus_allocate(payment):
         PaymentService.rollback(payment)
         PaymentService.allocate(payment)
+
+    @staticmethod
+    def re_balance(payments):
+        
+        
