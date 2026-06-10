@@ -112,28 +112,13 @@ class RemoveServiceGroupSerializer(serializers.ModelSerializer):
 # customer serializers
 class CustomerSerializer(serializers.ModelSerializer):
     due = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True, source="due_amount"
+        max_digits=10, decimal_places=2, read_only=True, source="_due"
     )
     surplus = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True, source="surplus_amount"
+        max_digits=10, decimal_places=2, read_only=True, source="_surplus"
     )
-    groups = ReadOnlyGroupSerializer(read_only=True, source="group")
-    employees = ReadOnlyEmployeeSerializer(
-        read_only=True, many=True, source="assigned_to"
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        request = self.context.get("request")
-        if not request:
-            return
-
-        self.fields["group"].queryset = Groups.objects.filter(owner=request.user)
-
-        self.fields["assigned_to"].child_relation.queryset = Employee.objects.filter(
-            parent=request.user
-        )
+    groups = ReadOnlyGroupSerializer(read_only=True)
+    employee = ReadOnlyEmployeeSerializer(read_only=True)
 
     class Meta:
         model = Customer
@@ -144,10 +129,8 @@ class CustomerSerializer(serializers.ModelSerializer):
             "email",
             "address",
             "logo",
-            "group",
             "groups",
-            "assigned_to",
-            "employees",
+            "employee",
             "due",
             "surplus",
         )
@@ -168,8 +151,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         assigned_to = validated_data.pop("assigned_to", [])
 
         cusomer = Customer.objects.create(owner=owner, **validated_data)
-        # M2M field need set since there is no direct relations.
-        cusomer.assigned_to.set(assigned_to)
 
         return cusomer
 
@@ -246,9 +227,27 @@ class RecordSerializer(serializers.ModelSerializer):
             raise ValidationError("Record cannot be created in the future.")
         return value
 
+
+class UpdateRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Record
+        fields = (
+            "id",
+            "customer",
+            "service",
+            "pcs",
+            "created_at",
+            "rate",
+            "discount",
+        )
+        read_only_fields = ["id"]
+
     def validate(self, attrs):
         if self.instance and "customer" in attrs:
-            if self.instance.customer != attrs["customer"]:
+            if (
+                self.instance.customer != attrs["customer"]
+                or self.instance.created_at.date() != attrs["created_at"].date()
+            ):
                 has_transaction = (
                     self.instance.advanceusage_set.exists()
                     or self.instance.allocation_set.exists()
@@ -257,7 +256,7 @@ class RecordSerializer(serializers.ModelSerializer):
                     raise ValidationError(
                         {
                             "customer": (
-                                "Customer cannot be changed after payments or advance usages have been recorded against this record."
+                                "Customer or Date cannot be changed after a transaction have been recorded against a work entry."
                             )
                         }
                     )

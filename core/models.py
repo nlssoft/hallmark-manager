@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db.models import Sum, Value, DecimalField, ExpressionWrapper, F
 from django.db.models.functions import Coalesce
+from django.core.validators import MinValueValidator
 
 user = get_user_model()
 
@@ -118,7 +119,9 @@ class GroupRate(models.Model):
         Service,
         on_delete=models.CASCADE,
     )
-    rate = models.DecimalField(max_digits=10, decimal_places=2)
+    rate = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
 
     class Meta:
         ordering = ["-pk"]
@@ -134,11 +137,21 @@ class Record(models.Model):
         on_delete=models.PROTECT,
     )
     service = models.ForeignKey(Service, on_delete=models.PROTECT)
-    pcs = models.PositiveIntegerField()
-    rate = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    pcs = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    rate = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(default=timezone.now)
     discount = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
+        max_digits=10,
+        decimal_places=2,
+        validators=[MinValueValidator(0)],
+        null=True,
+        blank=True,
     )
 
     class Meta:
@@ -173,7 +186,9 @@ class Payment(models.Model):
         Customer,
         on_delete=models.PROTECT,
     )
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     created_at = models.DateTimeField(default=timezone.now)
     mode = models.CharField(max_length=1, choices=mode_choice, default="c")
     image = CloudinaryField("image", blank=True, null=True)
@@ -188,7 +203,9 @@ class Payment(models.Model):
 class Allocation(models.Model):
     record = models.ForeignKey(Record, on_delete=models.CASCADE)
     payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -202,7 +219,9 @@ class Advance(models.Model):
     customer = models.ForeignKey(
         Customer, on_delete=models.SET_NULL, null=True, blank=True
     )
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    total_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     payment = models.ForeignKey(Payment, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -216,7 +235,9 @@ class Advance(models.Model):
 class AdvanceUsage(models.Model):
     advance = models.ForeignKey(Advance, on_delete=models.CASCADE)
     record = models.ForeignKey(Record, on_delete=models.CASCADE)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -249,7 +270,9 @@ class AuditLog(models.Model):
 class Request(models.Model):
     owner = models.ForeignKey(user, on_delete=models.CASCADE, related_name="requester")
     record = models.ManyToManyField(Record)
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     created_at = models.DateField(auto_now_add=True)
     reason = models.TextField(blank=True, null=True)
     status = models.CharField(

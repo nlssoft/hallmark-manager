@@ -1,5 +1,5 @@
 from .models import Record, Allocation, Payment, Advance, AdvanceUsage
-from django.db.models import Sum, F, Value, DecimalField
+from django.db.models import Sum, F, Value, DecimalField, ExpressionWrapper
 from django.db.models.functions import Coalesce
 from decimal import Decimal
 
@@ -17,14 +17,25 @@ class PaymentService:
     @staticmethod
     def advance_allocate(record):
         customer = record.customer
-        due = record.amount - ((record.discount or 0))
+        try:
+            due = record._left
+        except AttributeError:
+            due = record.amount - ((record.discount or 0))
 
         if due <= 0:
             return
 
         # all advance row that exists
-        advance_query_set = Advance.objects.filter(customer=customer).order_by(
-            "created_at"
+        advance_query_set = (
+            Advance.objects.filter(customer=customer)
+            .annotate(
+                _used_already=Coalesce(
+                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
+                )
+            )
+            .annotate(_available=F("total_amount") - F("_used_already"))
+            .filter(_available__gt=0)
+            .order_by("created_at")
         )
 
         for advance in advance_query_set:
@@ -32,15 +43,7 @@ class PaymentService:
             if due <= 0:
                 break
 
-            # for this advance what amount is still unallocated
-            used_already = (
-                AdvanceUsage.objects.filter(advance=advance).aggregate(
-                    total=Sum("amount")
-                )["total"]
-                or 0
-            )
-
-            available = advance.total_amount - used_already
+            available = advance._available
 
             # if there is none then skip this advance row and move to next row
             if available <= 0:
@@ -67,6 +70,10 @@ class PaymentService:
                     Sum("allocation__amount"), Value(0), output_field=DecimalField()
                 )
             )
+            .annotate(
+                _amount=Coalesce(F("rate") * F("pcs"), output_field=DecimalField())
+            )
+            .annotate(_due=F("_amount") - F("_paid_amount") - F("discount"))
         )
 
         remains = payment.amount
@@ -75,7 +82,7 @@ class PaymentService:
             if remains <= 0:
                 break
 
-            due = record.amount - ((record.discount or 0) + (record._paid_amount or 0))
+            due = record._due
 
             if due <= 0:
                 continue
@@ -105,9 +112,13 @@ class PaymentService:
                 payment=payment, record=record, amount=payment.amount
             )
 
+    @staticmethod
+    def record_rollback(record):
+        Allocation.objects.filter(record=record).delete()
+        AdvanceUsage.objects.filter(record=record).delete()
 
     @staticmethod
-    def rollback(payment):
+    def Payment_rollback(payment):
         Allocation.objects.filter(payment=payment).delete()
         Advance.objects.filter(payment=payment).delete()
 
@@ -117,6 +128,70 @@ class PaymentService:
         PaymentService.allocate(payment)
 
     @staticmethod
-    def re_balance(payments):
-        
-        
+    def re_balance(customer):
+        # All payments for this customer, oldest first
+        payments = (
+            Payment.objects.filter(customer=customer)
+            .annotate(
+                used=Coalesce(
+                    Sum("allocation__amount"), Value(0), output_field=DecimalField()
+                )
+                + Coalesce(
+                    Sum("advance__total_amount"), Value(0), output_field=DecimalField()
+                )
+            )
+            .annotate(_left=F("amount") - F("used"))
+            .filter(_left__gt=0)
+            .order_by("created_at")
+        )
+
+        # All unpaid records, oldest first
+        records = (
+            Record.objects.filter(customer=customer)
+            .annotate(
+                _paid=Coalesce(
+                    Sum("allocation__amount"), Value(0), output_field=DecimalField()
+                )
+                + Coalesce(
+                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
+                ),
+                _due=F("rate") * F("pcs")
+                - F("_paid")
+                - Coalesce(F("discount"), Value(0), output_field=DecimalField()),
+            )
+            .filter(_due__gt=0)
+            .order_by("created_at")
+        )
+
+        for payment in payments:
+            unallocated = payment._left
+
+            if unallocated <= 0:
+                continue
+
+            for record in records:
+                if record._due <= 0:
+                    continue
+
+                apply = min(unallocated, record._due)
+                Allocation.objects.create(payment=payment, record=record, amount=apply)
+                record._due -= apply
+                unallocated -= apply
+
+                # break the inner Loop if payment._left is finshied
+                if unallocated <= 0:
+                    break
+
+            if unallocated > 0:
+                PaymentService.advance_create(payment, unallocated)
+
+                unallocated = 0
+
+        # Now after this if there is some unpaid record left
+        # then run advance on them
+
+        records = records.filter(_due__gt=0)
+
+        if records:
+            for record in records:
+                PaymentService.advance_allocate(record)

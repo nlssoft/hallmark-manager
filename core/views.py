@@ -17,6 +17,7 @@ from .serializers import (
     RemoveServiceGroupSerializer,
     CustomerSerializer,
     RecordSerializer,
+    UpdateRecordSerializer,
     ServiceSerializer,
     RecordSerializer,
     PaymentSerializer,
@@ -34,7 +35,7 @@ from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
-from django.db.models import F, Value, DecimalField, Sum, ExpressionWrapper
+from django.db.models import F, Value, DecimalField, Sum, ExpressionWrapper, Case, When
 from django.db.models.functions import Coalesce
 
 
@@ -84,8 +85,31 @@ class CustomerViewset(ModelViewSet):
     def get_queryset(self):
         return (
             Customer.objects.filter(owner=self.request.user)
-            .select_related("group")
-            .prefetch_related("group__grouprate_set__service", "assigned_to")
+            .annotate(
+                _balance=(
+                    Coalesce(Sum("record__rate"), Value(0), output_field=DecimalField())
+                    * Coalesce(
+                        Sum("record__pcs"), Value(0), output_field=DecimalField()
+                    )
+                )
+                - Coalesce("record__discount", Value(0), output_field=DecimalField())
+                - Coalesce(
+                    Sum("payment__amount"), Value(0), output_field=DecimalField()
+                )
+            )
+            .annotate(
+                _due=Case(
+                    When(_balance__gt=0, then=F("_balance")),
+                    default=Value(0),
+                    output_field=DecimalField(),
+                ),
+                _surplus=Case(
+                    When(_balance__lt=0, then=F("_balance")),
+                    default=Value(0),
+                    output_field=DecimalField(),
+                ),
+            )
+            .select_related("group", "assigned_to")
         )
 
     def destroy(self, request, *args, **kwargs):
@@ -144,9 +168,15 @@ class RecordViewset(ModelViewSet):
                     - Coalesce(F("discount"), Value(0), output_field=DecimalField())
                 )
             )
-            .select_related("customer")
+            .select_related("customer", "service")
             .prefetch_related("allocation_set", "advanceusage_set")
         )
+
+    def get_serializer_class(self):
+        if self.action in ["update", "partial_update"]:
+            return UpdateRecordSerializer
+
+        return RecordSerializer
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -164,3 +194,23 @@ class RecordViewset(ModelViewSet):
             return Response(
                 self.get_serializer(record).data, status=status.HTTP_201_CREATED
             )
+
+    def update(self, request, *args, **kwargs):
+        with transaction.atomic():
+            instance = self.get_object()
+            PaymentService.record_rollback(instance)
+
+            response = super().update(request, *args, **kwargs)
+            PaymentService.re_balance(instance.customer)
+
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        record = self.get_object()
+        customer = record.customer
+
+        with transaction.atomic():
+            record.delete()
+            PaymentService.re_balance(customer)
+
+            return Response(status=status.HTTP_204_NO_CONTENT)
