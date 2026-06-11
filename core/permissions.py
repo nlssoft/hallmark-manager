@@ -1,7 +1,7 @@
 from rest_framework.permissions import BasePermission
 
 
-class ParentAccount(BasePermission):
+class ParentAccount_Only(BasePermission):
 
     def has_permission(self, request, view):
         return (

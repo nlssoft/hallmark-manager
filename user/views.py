@@ -17,12 +17,14 @@ from rest_framework_simplejwt.token_blacklist.models import (
     OutstandingToken,
     BlacklistedToken,
 )
-from core.permissions import ParentAccount
+from core.permissions import ParentAccount_Only
+from core.models import Customer
 from .models import User, UserOTP, Employee
 from .serializers import (
     VerifyEmailOTPSerializer,
     ChangeEmailOTPSerializer,
     EmployeeSerializer,
+    Sync_Employee,
 )
 from .Services.emails import (
     send_otp_email_registration,
@@ -221,7 +223,13 @@ class EmployeeView(
     GenericViewSet,
 ):
     serializer_class = EmployeeSerializer
-    permission_classes = [ParentAccount]
+    permission_classes = [ParentAccount_Only]
+
+    def get_serializer_class(self):
+        if self.action == "sync_employee":
+            return Sync_Employee
+
+        return EmployeeSerializer
 
     def get_queryset(self):
         return Employee.objects.filter(parent=self.request.user)
@@ -266,3 +274,28 @@ class EmployeeView(
         employee.save(update_fields=["is_active"])
 
         return Response({"message": "Employee is unbanned."}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="sync-employee")
+    def sync_employee(self, request, pk=None):
+        employee = self.get_object()
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        new_id = {c.id for c in serializer.validated_data["customer"]}
+
+        to_be_removed = Customer.objects.filter(assigned_to=employee).exclude(
+            assigned_to__id__in=new_id
+        )
+
+        for customer in to_be_removed:
+            customer.assigned_to.remove(employee)
+
+        to_be_added = Customer.objects.filter(
+            owner=request.user, id__in=new_id
+        ).exclude(assigned_to=employee)
+
+        for customer in to_be_added:
+            customer.assigned_to.add(employee)
+
+        return Response({"synced": len(new_id)})

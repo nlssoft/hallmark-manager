@@ -69,11 +69,20 @@ class PaymentService:
                 _paid_amount=Coalesce(
                     Sum("allocation__amount"), Value(0), output_field=DecimalField()
                 )
+                + Coalesce(
+                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
+                )
             )
             .annotate(
-                _amount=Coalesce(F("rate") * F("pcs"), output_field=DecimalField())
+                _amount=Coalesce(
+                    F("rate") * F("pcs"), Value(0), output_field=DecimalField()
+                )
             )
-            .annotate(_due=F("_amount") - F("_paid_amount") - F("discount"))
+            .annotate(
+                _due=F("_amount")
+                - F("_paid_amount")
+                - Coalesce(F("discount"), Value(0), output_field=DecimalField())
+            )
         )
 
         remains = payment.amount

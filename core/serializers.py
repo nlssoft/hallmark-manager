@@ -16,6 +16,22 @@ from django.db import transaction
 from django.utils import timezone
 
 
+# customer serializer .1
+class CustomerNestedSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Customer
+        fields = (
+            "id",
+            "logo",
+            "name",
+            "address",
+            "number",
+            "email",
+        )
+        read_only_fields = fields
+
+
 # group serializers
 class GroupRateNestedSerializer(serializers.Serializer):
     service_id = serializers.IntegerField(source="service.id")
@@ -26,6 +42,20 @@ class GroupRateNestedSerializer(serializers.Serializer):
 
 
 class ReadOnlyGroupSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(max_length=255)
+    description = serializers.CharField(
+        max_length=255, allow_blank=True, allow_null=True, required=False
+    )  # keep or not keep
+    services = GroupRateNestedSerializer(
+        read_only=True, source="grouprate_set", many=True
+    )
+    customers = CustomerNestedSerializer(
+        read_only=True, many=True, source="customer_set"
+    )
+
+
+class CustomerReadOnlyGroupSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(
@@ -109,7 +139,22 @@ class RemoveServiceGroupSerializer(serializers.ModelSerializer):
             self.fields["service"].queryset = Service.objects.filter(owner=request.user)
 
 
-# customer serializers
+class sync_customerSerializer(serializers.Serializer):
+    customer = serializers.PrimaryKeyRelatedField(
+        queryset=Customer.objects.all(), many=True
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        request = self.context.get("request")
+        if request:
+            self.fields["customer"].queryset = Customer.objects.filter(
+                owner=request.user
+            )
+
+
+# customer serializers .2
 class CustomerSerializer(serializers.ModelSerializer):
     due = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="_due"
@@ -117,8 +162,10 @@ class CustomerSerializer(serializers.ModelSerializer):
     surplus = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="_surplus"
     )
-    groups = ReadOnlyGroupSerializer(read_only=True)
-    employee = ReadOnlyEmployeeSerializer(read_only=True)
+    groups = CustomerReadOnlyGroupSerializer(read_only=True, source="group")
+    employee = ReadOnlyEmployeeSerializer(
+        read_only=True, many=True, source="assigned_to"
+    )
 
     class Meta:
         model = Customer
@@ -155,21 +202,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         return cusomer
 
 
-class CustomerNestedSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Customer
-        fields = (
-            "id",
-            "logo",
-            "name",
-            "address",
-            "number",
-            "email",
-        )
-        read_only_fields = fields
-
-
 # service serializers
 class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
@@ -201,7 +233,7 @@ class RecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_due"
     )
 
-    customers = CustomerNestedSerializer(read_only=True)
+    customers = CustomerNestedSerializer(read_only=True, source="customer")
     pay = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
@@ -227,8 +259,24 @@ class RecordSerializer(serializers.ModelSerializer):
             raise ValidationError("Record cannot be created in the future.")
         return value
 
+    def validate(self, attrs):
+        customer = attrs.get("customer")
+        service = attrs.get("service")
+
+        if not attrs.get("rate"):
+            exists = GroupRate.objects.filter(
+                group=customer.group,
+                service=service,
+            ).exists()
+
+            if not exists:
+                raise ValidationError("No rate defined for this service.")
+
+        return attrs
+
 
 class UpdateRecordSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Record
         fields = (
@@ -277,7 +325,7 @@ class RecordNestedSerializer(serializers.ModelSerializer):
 
 # payment serializers
 class PaymentSerializer(serializers.ModelSerializer):
-    customers = CustomerNestedSerializer(read_only=True)
+    customers = CustomerNestedSerializer(read_only=True, source="customer")
 
     class Meta:
         model = Payment
@@ -301,9 +349,9 @@ class PaymentNestedSerializer(serializers.ModelSerializer):
 
 # advance serializers
 class AdvanceLogSerializer(serializers.Serializer):
-    customers = CustomerNestedSerializer(read_only=True)
+    customers = CustomerNestedSerializer(read_only=True, source="customer")
     # advance created
-    payments = PaymentNestedSerializer(read_only=True)
+    payments = PaymentNestedSerializer(read_only=True, source="payment")
     total_amount = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="advance.total_amount"
     )

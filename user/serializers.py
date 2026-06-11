@@ -1,5 +1,6 @@
 # cls
 from .models import User, Employee, Profile, UserOTP
+from core.models import Customer
 
 # import cls
 from dj_rest_auth.registration.serializers import RegisterSerializer
@@ -279,6 +280,21 @@ class EmployeeSerializer(serializers.ModelSerializer):
         employee.save()
 
         return employee
+
+
+class Sync_Employee(serializers.Serializer):
+    customer = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=Customer.objects.all()
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        request = self.context.get("request")
+        if request:
+            self.fields["customer"].queryset = Customer.objects.filter(
+                owner=request.user
+            )
 
 
 class ReadOnlyEmployeeSerializer(EmployeeSerializer):

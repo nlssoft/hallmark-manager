@@ -24,8 +24,9 @@ from .serializers import (
     AdvanceLogSerializer,
     AuditLogSerializer,
     RequestSerializer,
+    sync_customerSerializer,
 )
-from .permissions import ParentAccount, ActionPermission
+from .permissions import ParentAccount_Only, ActionPermission
 from .money_logic import PaymentService
 
 # tools
@@ -35,12 +36,23 @@ from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
-from django.db.models import F, Value, DecimalField, Sum, ExpressionWrapper, Case, When
+from django.db.models import (
+    F,
+    Value,
+    DecimalField,
+    Sum,
+    ExpressionWrapper,
+    Case,
+    When,
+    OuterRef,
+    Subquery,
+    Q,
+)
 from django.db.models.functions import Coalesce
 
 
 class GroupsViewset(ModelViewSet):
-    permission_classes = [ParentAccount]
+    permission_classes = [ParentAccount_Only]
 
     def get_queryset(self):
         return (
@@ -54,6 +66,8 @@ class GroupsViewset(ModelViewSet):
             return ReadOnlyGroupSerializer
         if self.action == "remove_service":
             return RemoveServiceGroupSerializer
+        if self.action == "sync_customer":
+            return sync_customerSerializer
 
         return GroupSerializer
 
@@ -77,26 +91,81 @@ class GroupsViewset(ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+    @action(detail=True, methods=["post"], url_path="sync-members")
+    def sync_customer(self, request, pk=None):
+        group = self.get_object()
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        new_id = {customer.id for customer in serializer.validated_data["customer"]}
+
+        Customer.objects.filter(group=group).exclude(id__in=new_id).update(group=None)
+
+        Customer.objects.filter(owner=request.user, id__in=new_id).exclude(
+            group=group
+        ).update(group=group)
+
+        return Response({"synced": len(new_id)})
+
 
 class CustomerViewset(ModelViewSet):
     permission_classes = [ActionPermission]
     serializer_class = CustomerSerializer
 
     def get_queryset(self):
-        return (
-            Customer.objects.filter(owner=self.request.user)
+
+        user = self.request.user
+
+        if user.parent:
+            base = Customer.objects.filter(assigned_to=user)
+        else:
+            base = Customer.objects.filter(owner=user)
+
+        record_total = (
+            Record.objects.filter(customer_id=OuterRef("pk"))
+            .values("customer_id")
             .annotate(
-                _balance=(
-                    Coalesce(Sum("record__rate"), Value(0), output_field=DecimalField())
-                    * Coalesce(
-                        Sum("record__pcs"), Value(0), output_field=DecimalField()
-                    )
-                )
-                - Coalesce("record__discount", Value(0), output_field=DecimalField())
-                - Coalesce(
-                    Sum("payment__amount"), Value(0), output_field=DecimalField()
+                total=Coalesce(
+                    Sum(
+                        ExpressionWrapper(
+                            F("rate") * F("pcs")
+                            - Coalesce(
+                                F("discount"), Value(0), output_field=DecimalField()
+                            ),
+                            output_field=DecimalField(),
+                        )
+                    ),
+                    Value(0),
+                    output_field=DecimalField(),
                 )
             )
+            .values("total")
+        )
+
+        payment_total = (
+            Payment.objects.filter(customer_id=OuterRef("pk"))
+            .values("customer_id")
+            .annotate(
+                total=Coalesce(Sum("amount"), Value(0), output_field=DecimalField())
+            )
+            .values("total")
+        )
+
+        return (
+            base.annotate(
+                _record_total=Coalesce(
+                    Subquery(record_total, output_field=DecimalField()),
+                    Value(0),
+                    output_field=DecimalField(),
+                ),
+                _payment_total=Coalesce(
+                    Subquery(payment_total, output_field=DecimalField()),
+                    Value(0),
+                    output_field=DecimalField(),
+                ),
+            )
+            .annotate(_balance=F("_record_total") - F("_payment_total"))
             .annotate(
                 _due=Case(
                     When(_balance__gt=0, then=F("_balance")),
@@ -104,12 +173,13 @@ class CustomerViewset(ModelViewSet):
                     output_field=DecimalField(),
                 ),
                 _surplus=Case(
-                    When(_balance__lt=0, then=F("_balance")),
+                    When(_balance__lt=0, then=-F("_balance")),
                     default=Value(0),
                     output_field=DecimalField(),
                 ),
             )
-            .select_related("group", "assigned_to")
+            .select_related("group")
+            .prefetch_related("assigned_to")
         )
 
     def destroy(self, request, *args, **kwargs):
@@ -128,7 +198,7 @@ class CustomerViewset(ModelViewSet):
 
 
 class ServiceViewset(ModelViewSet):
-    permission_classes = [ParentAccount]
+    permission_classes = [ParentAccount_Only]
     serializer_class = ServiceSerializer
 
     def get_queryset(self):
@@ -136,7 +206,7 @@ class ServiceViewset(ModelViewSet):
 
 
 class RecordViewset(ModelViewSet):
-    permission_classes = [ParentAccount]
+    permission_classes = [ParentAccount_Only]
     serializer_class = RecordSerializer
 
     def get_queryset(self):
@@ -195,13 +265,13 @@ class RecordViewset(ModelViewSet):
                 self.get_serializer(record).data, status=status.HTTP_201_CREATED
             )
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
-        with transaction.atomic():
-            instance = self.get_object()
-            PaymentService.record_rollback(instance)
+        instance = self.get_object()
+        PaymentService.record_rollback(instance)
 
-            response = super().update(request, *args, **kwargs)
-            PaymentService.re_balance(instance.customer)
+        response = super().update(request, *args, **kwargs)
+        PaymentService.re_balance(instance.customer)
 
         return response
 
@@ -214,3 +284,37 @@ class RecordViewset(ModelViewSet):
             PaymentService.re_balance(customer)
 
             return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PaymentViewset(ModelViewSet):
+    permission_classes = [ParentAccount_Only]
+    serializer_class = PaymentSerializer
+
+    def get_queryset(self):
+        return Payment.objects.filter(customer__owner=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            payment = serializer.save()
+            PaymentService.allocate(payment)
+
+            return Response(
+                self.get_serializer(payment).data, status=status.HTTP_201_CREATED
+            )
+
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        payment = self.get_object()
+
+        PaymentService.Payment_rollback(payment)
+
+        response = super().update(request, *args, **kwargs)
+
+        # to refresh state
+        payment.refrsh_from_db()
+        PaymentService.allocate(payment)
+
+        return response
