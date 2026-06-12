@@ -313,7 +313,9 @@ class UpdateRecordSerializer(serializers.ModelSerializer):
 
 class RecordNestedSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True, source="_amount"
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
     )
     service = serializers.CharField(source="service.name", read_only=True)
 
@@ -330,14 +332,11 @@ class CloudInaryImageField(serializers.ImageField):
         if not value:
             return None
         return value.url
-    
-
-
 
 
 class PaymentSerializer(serializers.ModelSerializer):
     customers = CustomerNestedSerializer(read_only=True, source="customer")
-    image= CloudInaryImageField(allow_null= True, required=False)
+    image = CloudInaryImageField(allow_null=True, required=False)
 
     class Meta:
         model = Payment
@@ -351,16 +350,19 @@ class PaymentSerializer(serializers.ModelSerializer):
             "created_at",
         )
 
+    def validate_created_at(self, value):
+        if value > timezone.now():
+            raise ValidationError("Payment cannot be created in the future.")
+        return value
+
     def validate(self, attrs):
-        if (attrs.get("mode") == "o"
-            and not attrs.get( "image")
-            and self.context['request'].user.profile.setting_mode   
+        if (
+            attrs.get("mode") == "o"
+            and not attrs.get("image")
+            and self.context["request"].user.profile.setting_mode
         ):
-            raise ValidationError(
-                {"message": "Image is required for online payments."}
-            )
+            raise ValidationError({"message": "Image is required for online payments."})
         return attrs
-        
 
 
 class PaymentNestedSerializer(serializers.ModelSerializer):
@@ -376,15 +378,20 @@ class AdvanceLogSerializer(serializers.Serializer):
     # advance created
     payments = PaymentNestedSerializer(read_only=True, source="payment")
     total_amount = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True, source="advance.total_amount"
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
     )
 
     # advance used
-    records = RecordNestedSerializer(
-        source="advanceusage_set", many=True, read_only=True
-    )
+    records = serializers.SerializerMethodField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
+
+    def get_records(self, obj):
+        usages = obj.advanceusage_set.all()
+        records = [usage.record for usage in usages]
+        return RecordNestedSerializer(records, many=True).data
 
 
 # audit log serializers

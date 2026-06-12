@@ -28,11 +28,13 @@ from .serializers import (
 )
 from .permissions import ParentAccount_Only, ActionPermission
 from .money_logic import PaymentService
+from .json_serializer import model_snapshot
+from .services.helper_functions import get_reason
 
 # tools
 from rest_framework.decorators import action
-from rest_framework.viewsets import ModelViewSet
-from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
+from rest_framework.viewsets import ModelViewSet, ReadOnlyModelViewSet
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework import status
 from django.db import transaction
@@ -267,11 +269,26 @@ class RecordViewset(ModelViewSet):
 
     @transaction.atomic
     def update(self, request, *args, **kwargs):
-        instance = self.get_object()
-        PaymentService.record_rollback(instance)
+        record = self.get_object()
+        before = model_snapshot(record)
+        reason, error = get_reason(request)
 
+        if error:
+            return error
+
+        PaymentService.record_rollback(record)
         response = super().update(request, *args, **kwargs)
-        PaymentService.re_balance(instance.customer)
+        PaymentService.re_balance(record.customer)
+        after = self.get_queryset.get(pk=record.pk)
+
+        AuditLog.objects.create(
+            model="r",
+            user=request.user,
+            before=before,
+            after=after,
+            action="u",
+            reason=reason,
+        )
 
         return response
 
@@ -308,13 +325,62 @@ class PaymentViewset(ModelViewSet):
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         payment = self.get_object()
+        before = model_snapshot(payment)
+        reason, error = get_reason(request)
+
+        if error:
+            return error
 
         PaymentService.Payment_rollback(payment)
 
         response = super().update(request, *args, **kwargs)
 
         # to refresh state
-        payment.refrsh_from_db()
+        payment.refresh_from_db()
         PaymentService.allocate(payment)
+        after = model_snapshot(payment)
+
+        AuditLog.objects.create(
+            model="p",
+            user=request.user,
+            before=before,
+            after=after,
+            action="u",
+            reason=reason,
+        )
 
         return response
+
+    def destroy(self, request, *args, **kwargs):
+        payment = self.get_object()
+        before = model_snapshot(payment)
+        reason, error = get_reason(request)
+
+        if error:
+            return error
+
+        AuditLog.objects.create(
+            model="p", user=request.user, before=before, action="d", reason=reason
+        )
+        return super().destroy(request, *args, **kwargs)
+
+
+class AdvanceLogViewset(ReadOnlyModelViewSet):
+    permission_classes = [ParentAccount_Only]
+    serializer_class = AdvanceLogSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        return (
+            Advance.objects.filter(customer__owner=user)
+            .select_related("customer", "payment")
+            .prefetch_related("advanceusage_set", "advanceusage_set__record")
+        )
+
+
+class AuditLogViewset(ReadOnlyModelViewSet):
+    permission_classes = [ParentAccount_Only]
+    serializer_class = AuditLogSerializer
+
+    def get_queryset(self):
+        return AuditLog.objects.filter(user=self.request.user)

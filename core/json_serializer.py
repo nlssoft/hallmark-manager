@@ -1,17 +1,22 @@
 from django.forms.models import model_to_dict
 from django.core.serializers.json import DjangoJSONEncoder
 import json
+from django.core import serializers
+
 
 def serializer_inst(obj):
-    data={}
-    
+    data = {}
+
     for field in obj._meta.fields:
-        value= getattr(obj, field.attname)
+        value = getattr(obj, field.attname)
         try:
             json.dumps(value)
-            data[field.name]=value            
+            data[field.name] = value
         except (TypeError, ValueError):
-            data[field.name]= str(value)
+            data[field.name] = str(value)
     return data
-        
-    
+
+
+def model_snapshot(instance):
+    raw = json.loads(serializers.serialize("json", [instance]))[0]
+    return {"id": raw["pk"], **raw["fields"]}

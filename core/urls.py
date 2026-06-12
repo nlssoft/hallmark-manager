@@ -5,6 +5,8 @@ from .views import (
     ServiceViewset,
     RecordViewset,
     PaymentViewset,
+    AdvanceLogViewset,
+    AuditLogViewset,
 )
 
 router = SimpleRouter()
@@ -15,5 +17,7 @@ router.register("customers", CustomerViewset, basename="customers")
 router.register("services", ServiceViewset, basename="services")
 router.register("records", RecordViewset, basename="records")
 router.register("payments", PaymentViewset, basename="payments")
+router.register("advance-log", AdvanceLogViewset, basename="advance-log")
+router.register("audit-log", AuditLogViewset, basename="audit-log")
 
 urlpatterns = router.urls
