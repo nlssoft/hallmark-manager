@@ -324,8 +324,20 @@ class RecordNestedSerializer(serializers.ModelSerializer):
 
 
 # payment serializers
+class CloudInaryImageField(serializers.ImageField):
+
+    def to_representation(self, value):
+        if not value:
+            return None
+        return value.url
+    
+
+
+
+
 class PaymentSerializer(serializers.ModelSerializer):
     customers = CustomerNestedSerializer(read_only=True, source="customer")
+    image= CloudInaryImageField(allow_null= True, required=False)
 
     class Meta:
         model = Payment
@@ -338,6 +350,17 @@ class PaymentSerializer(serializers.ModelSerializer):
             "image",
             "created_at",
         )
+
+    def validate(self, attrs):
+        if (attrs.get("mode") == "o"
+            and not attrs.get( "image")
+            and self.context['request'].user.profile.setting_mode   
+        ):
+            raise ValidationError(
+                {"message": "Image is required for online payments."}
+            )
+        return attrs
+        
 
 
 class PaymentNestedSerializer(serializers.ModelSerializer):

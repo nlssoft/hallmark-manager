@@ -35,7 +35,7 @@ class CustomCookieOnlyJwtSerializer(JWTSerializer):
 
 
 class CustomRegisterSerializer(RegisterSerializer):
-    number = serializers.CharField(max_length=15)
+    number = serializers.CharField(max_length=15, required=True, allow_blank=True)
     company_name = serializers.CharField(
         max_length=255, required=False, allow_blank=True
     )
