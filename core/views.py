@@ -24,11 +24,16 @@ from .serializers import (
     AdvanceLogSerializer,
     AuditLogSerializer,
     RequestSerializer,
+    AproveRequestSerializer,
+    RejectRequestSerializer,
     sync_customerSerializer,
 )
-from .permissions import ParentAccount_Only, ActionPermission
+from .permissions import (
+    ParentAccount_Only,
+    CustomerEndpointPermission,
+    RequestEndpointPermission,
+)
 from .money_logic import PaymentService
-from .json_serializer import model_snapshot
 from .services.helper_functions import get_reason
 
 # tools
@@ -55,6 +60,7 @@ from django.db.models.functions import Coalesce
 
 class GroupsViewset(ModelViewSet):
     permission_classes = [ParentAccount_Only]
+    queryset = Groups.objects.none()
 
     def get_queryset(self):
         return (
@@ -112,8 +118,9 @@ class GroupsViewset(ModelViewSet):
 
 
 class CustomerViewset(ModelViewSet):
-    permission_classes = [ActionPermission]
+    permission_classes = [CustomerEndpointPermission]
     serializer_class = CustomerSerializer
+    queryset = Customer.objects.none()
 
     def get_queryset(self):
 
@@ -202,6 +209,7 @@ class CustomerViewset(ModelViewSet):
 class ServiceViewset(ModelViewSet):
     permission_classes = [ParentAccount_Only]
     serializer_class = ServiceSerializer
+    queryset = Service.objects.none()
 
     def get_queryset(self):
         return Service.objects.filter(owner=self.request.user).select_related("owner")
@@ -210,6 +218,7 @@ class ServiceViewset(ModelViewSet):
 class RecordViewset(ModelViewSet):
     permission_classes = [ParentAccount_Only]
     serializer_class = RecordSerializer
+    queryset = Record.objects.none()
 
     def get_queryset(self):
         return (
@@ -270,7 +279,7 @@ class RecordViewset(ModelViewSet):
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         record = self.get_object()
-        before = model_snapshot(record)
+        before = dict(RecordSerializer(record).data)
         reason, error = get_reason(request)
 
         if error:
@@ -279,7 +288,7 @@ class RecordViewset(ModelViewSet):
         PaymentService.record_rollback(record)
         response = super().update(request, *args, **kwargs)
         PaymentService.re_balance(record.customer)
-        after = self.get_queryset.get(pk=record.pk)
+        after = dict(RecordSerializer(self.get_queryset().get(pk=record.pk)).data)
 
         AuditLog.objects.create(
             model="r",
@@ -295,10 +304,24 @@ class RecordViewset(ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         record = self.get_object()
         customer = record.customer
+        before = dict(RecordSerializer(record).data)
+
+        reason, error = get_reason(request)
+
+        if error:
+            return error
 
         with transaction.atomic():
             record.delete()
             PaymentService.re_balance(customer)
+
+            AuditLog.objects.create(
+                model="r",
+                user=request.user,
+                before=before,
+                action="d",
+                reason=reason,
+            )
 
             return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -306,6 +329,7 @@ class RecordViewset(ModelViewSet):
 class PaymentViewset(ModelViewSet):
     permission_classes = [ParentAccount_Only]
     serializer_class = PaymentSerializer
+    queryset = Payment.objects.none()
 
     def get_queryset(self):
         return Payment.objects.filter(customer__owner=self.request.user)
@@ -325,7 +349,7 @@ class PaymentViewset(ModelViewSet):
     @transaction.atomic
     def update(self, request, *args, **kwargs):
         payment = self.get_object()
-        before = model_snapshot(payment)
+        before = dict(PaymentSerializer(payment).data)
         reason, error = get_reason(request)
 
         if error:
@@ -338,7 +362,7 @@ class PaymentViewset(ModelViewSet):
         # to refresh state
         payment.refresh_from_db()
         PaymentService.allocate(payment)
-        after = model_snapshot(payment)
+        after = dict(PaymentSerializer(self.get_queryset().get(pk=payment.pk)).data)
 
         AuditLog.objects.create(
             model="p",
@@ -353,7 +377,7 @@ class PaymentViewset(ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         payment = self.get_object()
-        before = model_snapshot(payment)
+        before = dict(PaymentSerializer(payment).data)
         reason, error = get_reason(request)
 
         if error:
@@ -368,6 +392,7 @@ class PaymentViewset(ModelViewSet):
 class AdvanceLogViewset(ReadOnlyModelViewSet):
     permission_classes = [ParentAccount_Only]
     serializer_class = AdvanceLogSerializer
+    queryset = Advance.objects.none()
 
     def get_queryset(self):
         user = self.request.user
@@ -381,6 +406,19 @@ class AdvanceLogViewset(ReadOnlyModelViewSet):
 class AuditLogViewset(ReadOnlyModelViewSet):
     permission_classes = [ParentAccount_Only]
     serializer_class = AuditLogSerializer
+    queryset = AuditLog.objects.none()
 
     def get_queryset(self):
         return AuditLog.objects.filter(user=self.request.user)
+
+
+class RequestViewset(ModelViewSet):
+    permission_classes = [RequestEndpointPermission]
+
+    def get_serializer(self, *args, **kwargs):
+        if self.action == "approve":
+            return AproveRequestSerializer
+        if self.action == "reject":
+            return RejectRequestSerializer
+
+        return RequestSerializer

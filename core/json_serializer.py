@@ -15,8 +15,3 @@ def serializer_inst(obj):
         except (TypeError, ValueError):
             data[field.name] = str(value)
     return data
-
-
-def model_snapshot(instance):
-    raw = json.loads(serializers.serialize("json", [instance]))[0]
-    return {"id": raw["pk"], **raw["fields"]}
