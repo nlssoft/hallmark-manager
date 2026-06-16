@@ -8,7 +8,6 @@ from django.db.models.functions import Coalesce
 from django.core.validators import MinValueValidator
 from .querysets import RecordQuerySet, PaymentQuerySet, AdvanceQuerySet
 
-
 user = get_user_model()
 
 
@@ -20,7 +19,7 @@ class Groups(models.Model):
     description = models.TextField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-pk"]
+        ordering = ["name"]
         unique_together = ("owner", "name")
 
     def __str__(self) -> str:
@@ -50,7 +49,7 @@ class Customer(models.Model):
         return f"{self.name} Address:{self.address}"
 
     class Meta:
-        ordering = ["-pk"]
+        ordering = ["name"]
 
     # propertyes
 
@@ -135,8 +134,7 @@ class GroupRate(models.Model):
 
 class Record(models.Model):
 
-    objects= RecordQuerySet.as_manager()
-
+    objects = RecordQuerySet.as_manager()
 
     customer = models.ForeignKey(
         Customer,
@@ -188,8 +186,7 @@ class Record(models.Model):
 
 class Payment(models.Model):
 
-    objects= PaymentQuerySet.as_manager()
-
+    objects = PaymentQuerySet.as_manager()
 
     mode_choice = [("c", "CASH"), ("o", "ONLINE")]
     customer = models.ForeignKey(
@@ -226,8 +223,8 @@ class Allocation(models.Model):
 
 
 class Advance(models.Model):
-    
-    objects= AdvanceQuerySet.as_manager()
+
+    objects = AdvanceQuerySet.as_manager()
 
     customer = models.ForeignKey(
         Customer, on_delete=models.SET_NULL, null=True, blank=True
@@ -294,8 +291,10 @@ class Request(models.Model):
     class Meta:
         ordering = ["-pk"]
 
-            
+
 class SnapShotRequest(models.Model):
-    request= models.ForeignKey(Request, on_delete=models.CASCADE)
-    record= models.ForeignKey(Record, on_delete= models.CASCADE)
-    due_amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    request = models.ForeignKey(Request, on_delete=models.CASCADE)
+    record = models.ForeignKey(Record, on_delete=models.CASCADE)
+    due_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )

@@ -65,6 +65,8 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     # email
     "anymail",
+    # fitler
+    "django_filters",
 ]
 
 MIDDLEWARE = [
@@ -77,7 +79,6 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
 ]
-
 
 
 INTERNAL_IPS = [
@@ -213,31 +214,28 @@ REST_FRAMEWORK = {
         "dj_rest_auth": "100/hour",
         "otp_cooldown": "1/min",
     },
-
 }
-
-
 
 
 if DEBUG and importlib.util.find_spec("debug_toolbar"):
     INSTALLED_APPS += ["debug_toolbar"]
-    INSTALLED_APPS += ['drf_spectacular']  
+    INSTALLED_APPS += ["drf_spectacular"]
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
-    REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema' 
+    REST_FRAMEWORK["DEFAULT_SCHEMA_CLASS"] = "drf_spectacular.openapi.AutoSchema"
 
     SPECTACULAR_SETTINGS = {
-        'TITLE': 'Hallmark Manager API',
-        'VERSION': '1.0.0',
-        'SECURITY': [{'cookieAuth': []}],
-        'COMPONENTS': {
-            'securitySchemes': {
-                'cookieAuth': {
-                    'type': 'apiKey',
-                    'in': 'cookie',
-                    'name': 'access_token',
+        "TITLE": "Hallmark Manager API",
+        "VERSION": "1.0.0",
+        "SECURITY": [{"cookieAuth": []}],
+        "COMPONENTS": {
+            "securitySchemes": {
+                "cookieAuth": {
+                    "type": "apiKey",
+                    "in": "cookie",
+                    "name": "access_token",
                 }
             }
-        }
+        },
     }
 
 

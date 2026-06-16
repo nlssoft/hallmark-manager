@@ -20,8 +20,8 @@ from collections import OrderedDict
 from decimal import Decimal
 from django.utils import timezone
 
-
 # customer serializer .1
+
 
 # Read
 class NestedCustomerSerializer(serializers.ModelSerializer):
@@ -40,6 +40,7 @@ class NestedCustomerSerializer(serializers.ModelSerializer):
 
 
 # group serializers
+
 
 # Read
 class NestedGroupRateSerializer(serializers.Serializer):
@@ -73,6 +74,7 @@ class NestedGroupSerializer(serializers.Serializer):
     group_rate = NestedGroupRateSerializer(
         read_only=True, source="grouprate_set", many=True
     )
+
 
 # Write
 class WriteGroupSerializer(serializers.Serializer):
@@ -234,6 +236,7 @@ class ServiceSerializer(serializers.ModelSerializer):
 
 # record serializers
 
+
 # Read
 class ReadOnlyRecordSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
@@ -262,7 +265,8 @@ class ReadOnlyRecordSerializer(serializers.ModelSerializer):
             "paid_amount",
             "due",
         )
-        read_only_fields =  fields
+        read_only_fields = fields
+
 
 class NestedRecordSerializer(serializers.ModelSerializer):
 
@@ -277,6 +281,7 @@ class NestedRecordSerializer(serializers.ModelSerializer):
         model = Record
         fields = ("id", "service", "pcs", "rate", "discount", "amount")
         read_only_fields = fields
+
 
 class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
@@ -303,8 +308,7 @@ class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
             "paid_amount",
             "due",
         )
-        read_only_fields =  fields
-
+        read_only_fields = fields
 
 
 # Write
@@ -384,6 +388,7 @@ class UpdateRecordSerializer(serializers.ModelSerializer):
 
 # payment serializers
 
+
 # Helper
 class CloudInaryImageField(serializers.ImageField):
 
@@ -391,6 +396,7 @@ class CloudInaryImageField(serializers.ImageField):
         if not value:
             return None
         return value.url
+
 
 # Read
 class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
@@ -408,6 +414,7 @@ class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
             "created_at",
         )
 
+
 class NestedPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
@@ -415,8 +422,8 @@ class NestedPaymentSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-#write
-class WritePaymentSerializer(serializers.ModelSerializer):  
+# write
+class WritePaymentSerializer(serializers.ModelSerializer):
     image = CloudInaryImageField(allow_null=True, required=False)
 
     class Meta:
@@ -458,7 +465,9 @@ class ReadOnlyAdvanceLogSerializer(serializers.Serializer):
 
     # advance used
     record = serializers.SerializerMethodField()
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    amount_used = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_amount_used", read_only=True
+    )
     created_at = serializers.DateTimeField(read_only=True)
 
     def get_record(self, obj):
@@ -477,6 +486,7 @@ class ReadOnlyAuditLogSerializer(serializers.ModelSerializer):
 
 # request serializers
 
+
 # Read
 class ReadOnlyRequestSerializer(serializers.ModelSerializer):
 
@@ -485,48 +495,37 @@ class ReadOnlyRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Request
-        fields= ("id", "record", "total_amount", "created_at", "status")
-        read_only_fields= fields
+        fields = ("id", "record", "total_amount", "created_at", "status")
+        read_only_fields = fields
 
     def get_record(self, obj):
-        groups= OrderedDict()
+        groups = OrderedDict()
         records = obj.record.all()
 
-        if obj.status =='p':
+        if obj.status == "p":
 
             for record in records:
-                if (record._due <= Decimal('0.00')):
+                if record._due <= Decimal("0.00"):
                     continue
 
-
                 customer_id = record.customer_id
-
 
                 if customer_id not in groups:
                     groups[customer_id] = {
                         "customer": NestedCustomerSerializer(record.customer).data,
                         "records": [],
-                        "amount": Decimal('0.00')
+                        "amount": Decimal("0.00"),
                     }
 
-                
-                groups[customer_id]['records'].append(NestedWithOutCustomerRecordSerializer(record).data)
-                groups[customer_id]['amount'] += Decimal(record._due)
+                groups[customer_id]["records"].append(
+                    NestedWithOutCustomerRecordSerializer(record).data
+                )
+                groups[customer_id]["amount"] += Decimal(record._due)
 
-            return [
-                {**g, "amount": str(g["amount"])}
-                for g in groups.values()
-            ]
-        
-    
-        snapshots = (
-            SnapShotRequest.objects
-            .filter(request=obj)
-            .select_related(
-                "record",
-                "record__customer",
-                "record__service"
-            )
+            return [{**g, "amount": str(g["amount"])} for g in groups.values()]
+
+        snapshots = SnapShotRequest.objects.filter(request=obj).select_related(
+            "record", "record__customer", "record__service"
         )
 
         for snapshot in snapshots:
@@ -535,65 +534,61 @@ class ReadOnlyRequestSerializer(serializers.ModelSerializer):
 
             if customer_id not in groups:
                 groups[customer_id] = {
-                    "customer": NestedCustomerSerializer(
-                        record.customer
-                    ).data,
+                    "customer": NestedCustomerSerializer(record.customer).data,
                     "records": [],
-                    "amount": Decimal("0.00")
+                    "amount": Decimal("0.00"),
                 }
 
             record_data = NestedWithOutCustomerRecordSerializer(record).data
-            record_data['requested_amount'] = str(snapshot.due_amount)
+            record_data["requested_amount"] = str(snapshot.due_amount)
 
             groups[customer_id]["records"].append(record_data)
 
             groups[customer_id]["amount"] += snapshot.due_amount
-        
-        return [
-            {**g, "amount": str(g["amount"])}
-            for g in groups.values()
-        ]
-                        
+
+        return [{**g, "amount": str(g["amount"])} for g in groups.values()]
+
     def get_total_amount(self, obj):
-        if obj.status == 'p':
-            return str(sum(
-                r._due for r in  obj.record.all()
-                if r._due > Decimal('0.00')
-            ))
-        
-        return str(sum(
-            r.due_amount for r in SnapShotRequest.objects.filter(request=obj)
-        ))
+        if obj.status == "p":
+            return str(
+                sum(r._due for r in obj.record.all() if r._due > Decimal("0.00"))
+            )
+
+        return str(
+            sum(r.due_amount for r in SnapShotRequest.objects.filter(request=obj))
+        )
 
 
 # Write
-class WriteRequestSerializer(serializers.ModelSerializer): 
+class WriteRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Request
         fields = ("id", "record")
         read_only_fields = ["id"]
 
-    
-
-    #here records are just a convinet name for value
+    # here records are just a convinet name for value
     def validate_record(self, records):
 
-        user= self.context["request"].user
+        user = self.context["request"].user
 
-        pending = Request.objects.filter(
-            status='p',
-            owner= user,
-            record__in = records,
-        ).values_list("record", flat=True).distinct()
+        pending = (
+            Request.objects.filter(
+                status="p",
+                owner=user,
+                record__in=records,
+            )
+            .values_list("record", flat=True)
+            .distinct()
+        )
 
         # on update exclude your own request
         if self.instance:
             pending = pending.exclude(pk=self.instance.pk)
-        
+
         if pending.exists():
             raise ValidationError("One or more records already have a pending request.")
-        
+
         if not records:
             raise ValidationError("Select at least one record.")
 
@@ -603,25 +598,22 @@ class WriteRequestSerializer(serializers.ModelSerializer):
         fields = super().get_fields()
         request = self.context.get("request")
 
-        pending_record_ids =(
-            Request.objects.filter(status='p', owner=request.user, record__isnull=False).values_list(
-                "record", flat=True).distinct()
-
-        ) 
+        pending_record_ids = (
+            Request.objects.filter(status="p", owner=request.user, record__isnull=False)
+            .values_list("record", flat=True)
+            .distinct()
+        )
         if self.instance:
             pending_record_ids = pending_record_ids.exclude(pk=self.instance.pk)
 
         if request and request.user.parent_id is not None:
-            fields["record"].child_relation.queryset =  Record.objects.with_financials().filter(
-                customer__assigned_to= request.user).select_related(
-                    "customer", "service").prefetch_related("advanceusage_set" , "allocation_set")\
-                        .filter(_due__gt=0).exclude(pk__in=pending_record_ids)
-            
+            fields["record"].child_relation.queryset = (
+                Record.objects.with_financials()
+                .filter(customer__assigned_to=request.user)
+                .select_related("customer", "service")
+                .prefetch_related("advanceusage_set", "allocation_set")
+                .filter(_due__gt=0)
+                .exclude(pk__in=pending_record_ids)
+            )
+
         return fields
-
-
-
-    
-
-
-
