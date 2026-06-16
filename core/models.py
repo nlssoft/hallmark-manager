@@ -6,6 +6,8 @@ from django.core.exceptions import ValidationError
 from django.db.models import Sum, Value, DecimalField, ExpressionWrapper, F
 from django.db.models.functions import Coalesce
 from django.core.validators import MinValueValidator
+from .querysets import RecordQuerySet, PaymentQuerySet, AdvanceQuerySet
+
 
 user = get_user_model()
 
@@ -132,6 +134,10 @@ class GroupRate(models.Model):
 
 
 class Record(models.Model):
+
+    objects= RecordQuerySet.as_manager()
+
+
     customer = models.ForeignKey(
         Customer,
         on_delete=models.PROTECT,
@@ -150,7 +156,7 @@ class Record(models.Model):
         max_digits=10,
         decimal_places=2,
         validators=[MinValueValidator(0)],
-        null=True,
+        default=0,
         blank=True,
     )
 
@@ -181,6 +187,10 @@ class Record(models.Model):
 
 
 class Payment(models.Model):
+
+    objects= PaymentQuerySet.as_manager()
+
+
     mode_choice = [("c", "CASH"), ("o", "ONLINE")]
     customer = models.ForeignKey(
         Customer,
@@ -216,6 +226,9 @@ class Allocation(models.Model):
 
 
 class Advance(models.Model):
+    
+    objects= AdvanceQuerySet.as_manager()
+
     customer = models.ForeignKey(
         Customer, on_delete=models.SET_NULL, null=True, blank=True
     )
@@ -268,11 +281,8 @@ class AuditLog(models.Model):
 
 
 class Request(models.Model):
-    owner = models.ForeignKey(user, on_delete=models.CASCADE, related_name="requester")
+    owner = models.ForeignKey(user, on_delete=models.CASCADE)
     record = models.ManyToManyField(Record)
-    amount = models.DecimalField(
-        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
-    )
     created_at = models.DateField(auto_now_add=True)
     reason = models.TextField(blank=True, null=True)
     status = models.CharField(
@@ -283,3 +293,9 @@ class Request(models.Model):
 
     class Meta:
         ordering = ["-pk"]
+
+            
+class SnapShotRequest(models.Model):
+    request= models.ForeignKey(Request, on_delete=models.CASCADE)
+    record= models.ForeignKey(Record, on_delete= models.CASCADE)
+    due_amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])

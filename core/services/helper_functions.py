@@ -8,6 +8,6 @@ def get_reason(request):
     requires = request.user.profile.setting_reason
 
     if requires and reason is None:
-        raise ValidationError({"message": "Reason is required."})
+        raise ValidationError("Reason is required.")
 
-    return reason, None
+    return reason

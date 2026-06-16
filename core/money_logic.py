@@ -1,10 +1,33 @@
-from .models import Record, Allocation, Payment, Advance, AdvanceUsage
+from .models import Record, Allocation, Payment, Advance, AdvanceUsage, Customer
 from django.db.models import Sum, F, Value, DecimalField, ExpressionWrapper
 from django.db.models.functions import Coalesce
 from decimal import Decimal
 
 
 class PaymentService:
+
+    @staticmethod
+    def use_remain(payment, records, remains):
+        
+        for record in records:
+            if remains <= 0:
+                break
+
+            due = record._due
+
+            if due <= 0:
+                continue
+
+            allocated = min(due, remains)
+
+            Allocation.objects.create(
+                record=record,
+                amount=allocated,
+                payment=payment,
+            )
+
+            remains -= allocated
+        return remains
 
     @staticmethod
     def advance_create(payment, amount):
@@ -27,14 +50,7 @@ class PaymentService:
 
         # all advance row that exists
         advance_query_set = (
-            Advance.objects.filter(customer=customer)
-            .annotate(
-                _used_already=Coalesce(
-                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
-                )
-            )
-            .annotate(_available=F("total_amount") - F("_used_already"))
-            .filter(_available__gt=0)
+            Advance.objects.with_availability().filter(customer=customer, _available__gt=0)
             .order_by("created_at")
         )
 
@@ -61,65 +77,52 @@ class PaymentService:
             due -= used
 
     @staticmethod
-    def allocate(payment):
-        records = (
-            Record.objects.filter(customer=payment.customer)
-            .order_by("created_at")
-            .annotate(  # ← annotate here too
-                _paid_amount=Coalesce(
-                    Sum("allocation__amount"), Value(0), output_field=DecimalField()
-                )
-                + Coalesce(
-                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
-                )
-            )
-            .annotate(
-                _amount=Coalesce(
-                    F("rate") * F("pcs"), Value(0), output_field=DecimalField()
-                )
-            )
-            .annotate(
-                _due=F("_amount")
-                - F("_paid_amount")
-                - Coalesce(F("discount"), Value(0), output_field=DecimalField())
-            )
-        )
+    def allocate(payment, remains=None):
+        records = Record.objects.with_financials().filter(
+            customer=payment.customer).order_by("created_at")
+        
+        if remains is None:
+            remains = payment.amount
 
-        remains = payment.amount
-
-        for record in records:
-            if remains <= 0:
-                break
-
-            due = record._due
-
-            if due <= 0:
-                continue
-
-            allocated = min(due, remains)
-
-            Allocation.objects.create(
-                record=record,
-                amount=allocated,
-                payment=payment,
-            )
-
-            remains -= allocated
+        remains = PaymentService.use_remain(payment, records, remains)
 
         # advance allocation
         if remains > 0:
             PaymentService.advance_create(payment, remains)
 
     @staticmethod
-    def allocate_selected(records):
+    def allocate_selected(record):
+        payment = Payment.objects.create(
+            customer=record.customer, amount=record._due, mode="c"
+        )
+        Allocation.objects.create(
+            payment=payment, record=record, amount=payment.amount
+        )
+    
+    @staticmethod
+    def allocate_selected_many(records):
+        
+        customers = Customer.objects.filter(record__in=records).distinct()
 
-        for record in records:
+        for customer in customers:
+            customer_records = records.filter(customer=customer)
+
+            total_due = sum(r._due for r in customer_records)
+
             payment = Payment.objects.create(
-                customer=record.customer, amount=record._due, mode="c"
+                customer=customer, amount=total_due, mode='c'
             )
-            Allocation.objects.create(
-                payment=payment, record=record, amount=payment.amount
-            )
+
+            allocation = [
+                Allocation(
+                    payment=payment,
+                    record=r,
+                    amount=r._due
+                )
+                for r in customer_records
+            ] 
+
+            Allocation.objects.bulk_create(allocation)
 
     @staticmethod
     def record_rollback(record):
@@ -128,8 +131,56 @@ class PaymentService:
 
     @staticmethod
     def Payment_rollback(payment):
+        allocation_record = list(Allocation.objects.filter(payment=payment).values_list('record_id', flat=True))
+        advanceusage_record = list(AdvanceUsage.objects.filter(advance__payment=payment).values_list('record_id', flat=True))
+
         Allocation.objects.filter(payment=payment).delete()
         Advance.objects.filter(payment=payment).delete()
+
+        return allocation_record, advanceusage_record
+
+    @staticmethod
+    def update_allocate(payment, allocation_record, advanceusage_record):
+        
+        remains = payment.amount
+
+        if allocation_record:
+            records = Record.objects.with_financials().filter(pk__in=allocation_record).order_by('created_at', 'pk')
+
+            remains = PaymentService.use_remain(payment, records, remains)
+
+
+        if remains > Decimal('0.00') and advanceusage_record:
+            records = list(Record.objects.with_financials().filter(pk__in=advanceusage_record).order_by('created_at', 'pk'))
+            records_due = sum(r._due for r in records)
+
+            safe = min(remains, records_due)
+
+            advance = Advance.objects.create(
+                payment=payment, 
+                customer=payment.customer,
+                total_amount= safe)
+            
+            advance_remaining = safe
+            
+            for record in records:
+                if advance_remaining <= Decimal('0.00'):
+                    break
+
+                used= min(record._due, advance_remaining)
+
+                AdvanceUsage.objects.create(
+                    record = record,
+                    advance=advance,
+                    amount=used
+                )
+
+                advance_remaining -= used
+                remains -= used
+    
+        if remains > Decimal('0.00'):
+            PaymentService.allocate(payment, remains)
+
 
     @staticmethod
     def rollback_plus_allocate(payment):
@@ -140,34 +191,14 @@ class PaymentService:
     def re_balance(customer):
         # All payments for this customer, oldest first
         payments = (
-            Payment.objects.filter(customer=customer)
-            .annotate(
-                used=Coalesce(
-                    Sum("allocation__amount"), Value(0), output_field=DecimalField()
-                )
-                + Coalesce(
-                    Sum("advance__total_amount"), Value(0), output_field=DecimalField()
-                )
-            )
-            .annotate(_left=F("amount") - F("used"))
+            Payment.objects.with_balance().filter(customer=customer)
             .filter(_left__gt=0)
             .order_by("created_at")
         )
 
         # All unpaid records, oldest first
         records = (
-            Record.objects.filter(customer=customer)
-            .annotate(
-                _paid=Coalesce(
-                    Sum("allocation__amount"), Value(0), output_field=DecimalField()
-                )
-                + Coalesce(
-                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
-                ),
-                _due=F("rate") * F("pcs")
-                - F("_paid")
-                - Coalesce(F("discount"), Value(0), output_field=DecimalField()),
-            )
+            Record.objects.with_financials().filter(customer=customer)
             .filter(_due__gt=0)
             .order_by("created_at")
         )

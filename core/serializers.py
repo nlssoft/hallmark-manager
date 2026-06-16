@@ -8,16 +8,23 @@ from .models import (
     Payment,
     AuditLog,
     Request,
+    SnapShotRequest,
 )
 from user.models import Employee
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Sum, F, Value, DecimalField
+from django.db.models.functions import Coalesce
+from collections import OrderedDict
+from decimal import Decimal
 from django.utils import timezone
 
 
 # customer serializer .1
-class CustomerNestedSerializer(serializers.ModelSerializer):
+
+# Read
+class NestedCustomerSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Customer
@@ -33,7 +40,9 @@ class CustomerNestedSerializer(serializers.ModelSerializer):
 
 
 # group serializers
-class GroupRateNestedSerializer(serializers.Serializer):
+
+# Read
+class NestedGroupRateSerializer(serializers.Serializer):
     service_id = serializers.IntegerField(source="service.id")
     service_name = serializers.CharField(source="service.name")
     service_rate = serializers.DecimalField(
@@ -47,26 +56,26 @@ class ReadOnlyGroupSerializer(serializers.Serializer):
     description = serializers.CharField(
         max_length=255, allow_blank=True, allow_null=True, required=False
     )  # keep or not keep
-    services = GroupRateNestedSerializer(
+    group_rate = NestedGroupRateSerializer(
         read_only=True, source="grouprate_set", many=True
     )
-    customers = CustomerNestedSerializer(
+    customer = NestedCustomerSerializer(
         read_only=True, many=True, source="customer_set"
     )
 
 
-class CustomerReadOnlyGroupSerializer(serializers.Serializer):
+class NestedGroupSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(
         max_length=255, allow_blank=True, allow_null=True, required=False
     )  # keep or not keep
-    services = GroupRateNestedSerializer(
+    group_rate = NestedGroupRateSerializer(
         read_only=True, source="grouprate_set", many=True
     )
 
-
-class GroupSerializer(serializers.Serializer):
+# Write
+class WriteGroupSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(
@@ -124,6 +133,7 @@ class GroupSerializer(serializers.Serializer):
         return instance
 
 
+# Action
 class RemoveServiceGroupSerializer(serializers.ModelSerializer):
     service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all())
 
@@ -155,6 +165,7 @@ class sync_customerSerializer(serializers.Serializer):
 
 
 # customer serializers .2
+# Read & Write
 class CustomerSerializer(serializers.ModelSerializer):
     due = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="_due"
@@ -162,7 +173,7 @@ class CustomerSerializer(serializers.ModelSerializer):
     surplus = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="_surplus"
     )
-    groups = CustomerReadOnlyGroupSerializer(read_only=True, source="group")
+    groups = NestedGroupSerializer(read_only=True, source="group")
     employee = ReadOnlyEmployeeSerializer(
         read_only=True, many=True, source="assigned_to"
     )
@@ -222,26 +233,26 @@ class ServiceSerializer(serializers.ModelSerializer):
 
 
 # record serializers
-class RecordSerializer(serializers.ModelSerializer):
+
+# Read
+class ReadOnlyRecordSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="_amount"
     )
     paid_amount = serializers.DecimalField(
-        max_digits=10, decimal_places=2, read_only=True, source="_paid_amount"
+        max_digits=10, decimal_places=2, read_only=True, source="_paid"
     )
     due = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="_due"
     )
-
-    customers = CustomerNestedSerializer(read_only=True, source="customer")
-    pay = serializers.BooleanField(write_only=True, required=False, default=False)
+    customer = NestedCustomerSerializer(read_only=True)
+    service = serializers.CharField(source="service.name", read_only=True)
 
     class Meta:
         model = Record
         fields = (
             "id",
             "customer",
-            "customers",
             "service",
             "pcs",
             "created_at",
@@ -250,6 +261,66 @@ class RecordSerializer(serializers.ModelSerializer):
             "amount",
             "paid_amount",
             "due",
+        )
+        read_only_fields =  fields
+
+class NestedRecordSerializer(serializers.ModelSerializer):
+
+    amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    service = serializers.CharField(source="service.name", read_only=True)
+
+    class Meta:
+        model = Record
+        fields = ("id", "service", "pcs", "rate", "discount", "amount")
+        read_only_fields = fields
+
+class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, source="_amount"
+    )
+    paid_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, source="_paid"
+    )
+    due = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, source="_due"
+    )
+    service = serializers.CharField(source="service.name", read_only=True)
+
+    class Meta:
+        model = Record
+        fields = (
+            "id",
+            "service",
+            "pcs",
+            "created_at",
+            "rate",
+            "discount",
+            "amount",
+            "paid_amount",
+            "due",
+        )
+        read_only_fields =  fields
+
+
+
+# Write
+class CreateRecordSerializer(serializers.ModelSerializer):
+    pay = serializers.BooleanField(write_only=True, required=False, default=False)
+
+    class Meta:
+        model = Record
+        fields = (
+            "id",
+            "customer",
+            "service",
+            "pcs",
+            "created_at",
+            "rate",
+            "discount",
             "pay",
         )
         read_only_fields = ["id"]
@@ -311,21 +382,9 @@ class UpdateRecordSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class RecordNestedSerializer(serializers.ModelSerializer):
-    amount = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-    service = serializers.CharField(source="service.name", read_only=True)
-
-    class Meta:
-        model = Record
-        fields = ("id", "service", "pcs", "rate", "discount", "amount")
-        read_only_fields = fields
-
-
 # payment serializers
+
+# Helper
 class CloudInaryImageField(serializers.ImageField):
 
     def to_representation(self, value):
@@ -333,9 +392,31 @@ class CloudInaryImageField(serializers.ImageField):
             return None
         return value.url
 
+# Read
+class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
+    customer = NestedCustomerSerializer(read_only=True)
+    image = CloudInaryImageField(read_only=True)
 
-class PaymentSerializer(serializers.ModelSerializer):
-    customers = CustomerNestedSerializer(read_only=True, source="customer")
+    class Meta:
+        model = Payment
+        fields = (
+            "id",
+            "customer",
+            "mode",
+            "amount",
+            "image",
+            "created_at",
+        )
+
+class NestedPaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = ("id", "mode", "amount", "image", "created_at")
+        read_only_fields = fields
+
+
+#write
+class WritePaymentSerializer(serializers.ModelSerializer):  
     image = CloudInaryImageField(allow_null=True, required=False)
 
     class Meta:
@@ -343,7 +424,6 @@ class PaymentSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "customer",
-            "customers",
             "mode",
             "amount",
             "image",
@@ -365,18 +445,11 @@ class PaymentSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PaymentNestedSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Payment
-        fields = ("id", "mode", "amount", "image", "created_at")
-        read_only_fields = fields
-
-
 # advance serializers
-class AdvanceLogSerializer(serializers.Serializer):
-    customers = CustomerNestedSerializer(read_only=True, source="customer")
+class ReadOnlyAdvanceLogSerializer(serializers.Serializer):
+    customer = NestedCustomerSerializer(read_only=True)
     # advance created
-    payments = PaymentNestedSerializer(read_only=True, source="payment")
+    payment = NestedPaymentSerializer(read_only=True)
     total_amount = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -384,18 +457,18 @@ class AdvanceLogSerializer(serializers.Serializer):
     )
 
     # advance used
-    records = serializers.SerializerMethodField()
+    record = serializers.SerializerMethodField()
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     created_at = serializers.DateTimeField(read_only=True)
 
-    def get_records(self, obj):
+    def get_record(self, obj):
         usages = obj.advanceusage_set.all()
         records = [usage.record for usage in usages]
-        return RecordNestedSerializer(records, many=True).data
+        return NestedRecordSerializer(records, many=True).data
 
 
 # audit log serializers
-class AuditLogSerializer(serializers.ModelSerializer):
+class ReadOnlyAuditLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = AuditLog
         fields = ("id", "model", "action", "before", "after", "logged_at", "reason")
@@ -403,63 +476,152 @@ class AuditLogSerializer(serializers.ModelSerializer):
 
 
 # request serializers
-class RequestSerializer(serializers.ModelSerializer):
+
+# Read
+class ReadOnlyRequestSerializer(serializers.ModelSerializer):
+
+    record = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Request
-        fields = ("id", "record", "amount", "created_at", "status")
-        read_only_fields = ["id", "status", "created_at"]
+        fields= ("id", "record", "total_amount", "created_at", "status")
+        read_only_fields= fields
 
-    def validate(self, data):
-        user = self.context["request"].user
-        if user.parent is None:
-            raise ValidationError("Admin's cannot create requests.")
-        return data
+    def get_record(self, obj):
+        groups= OrderedDict()
+        records = obj.record.all()
 
-    def create(self, validated_data):
-        user = self.context["request"].user
-        records = validated_data.get("record")
+        if obj.status =='p':
 
-        amount = 0
-
-        for record in records:
-            amount += record.amount
-
-        validated_data["amount"] = amount
-        return Request.objects.create(owner=user, **validated_data)
-
-    def update(self, instance, validated_data):
-        records = validated_data.get("record", instance.record)
-        instance.record = records
-        amount = 0
-        for record in records:
-            amount += record.amount
-        instance.amount = amount
-        instance.save()
-        return instance
+            for record in records:
+                if (record._due <= Decimal('0.00')):
+                    continue
 
 
-class AproveRequestSerializer(serializers.ModelSerializer):
+                customer_id = record.customer_id
+
+
+                if customer_id not in groups:
+                    groups[customer_id] = {
+                        "customer": NestedCustomerSerializer(record.customer).data,
+                        "records": [],
+                        "amount": Decimal('0.00')
+                    }
+
+                
+                groups[customer_id]['records'].append(NestedWithOutCustomerRecordSerializer(record).data)
+                groups[customer_id]['amount'] += Decimal(record._due)
+
+            return [
+                {**g, "amount": str(g["amount"])}
+                for g in groups.values()
+            ]
+        
+    
+        snapshots = (
+            SnapShotRequest.objects
+            .filter(request=obj)
+            .select_related(
+                "record",
+                "record__customer",
+                "record__service"
+            )
+        )
+
+        for snapshot in snapshots:
+            record = snapshot.record
+            customer_id = record.customer_id
+
+            if customer_id not in groups:
+                groups[customer_id] = {
+                    "customer": NestedCustomerSerializer(
+                        record.customer
+                    ).data,
+                    "records": [],
+                    "amount": Decimal("0.00")
+                }
+
+            record_data = NestedWithOutCustomerRecordSerializer(record).data
+            record_data['requested_amount'] = str(snapshot.due_amount)
+
+            groups[customer_id]["records"].append(record_data)
+
+            groups[customer_id]["amount"] += snapshot.due_amount
+        
+        return [
+            {**g, "amount": str(g["amount"])}
+            for g in groups.values()
+        ]
+                        
+    def get_total_amount(self, obj):
+        if obj.status == 'p':
+            return str(sum(
+                r._due for r in  obj.record.all()
+                if r._due > Decimal('0.00')
+            ))
+        
+        return str(sum(
+            r.due_amount for r in SnapShotRequest.objects.filter(request=obj)
+        ))
+
+
+# Write
+class WriteRequestSerializer(serializers.ModelSerializer): 
+
     class Meta:
         model = Request
-        fields = "id"
-        read_only_fields = fields
-
-    def validate(self, data):
-        user = self.context["request"].user
-        if user.parent:
-            raise ValidationError("You don't have permission to aprove requests.")
-        return data
-
-
-class RejectRequestSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Request
-        fields = ("id", "reason")
+        fields = ("id", "record")
         read_only_fields = ["id"]
 
-    def validate(self, data):
-        user = self.context["request"].user
-        if user.parent:
-            raise ValidationError("You don't have permission to reject requests.")
-        return data
+    
+
+    #here records are just a convinet name for value
+    def validate_record(self, records):
+
+        user= self.context["request"].user
+
+        pending = Request.objects.filter(
+            status='p',
+            owner= user,
+            record__in = records,
+        ).values_list("record", flat=True).distinct()
+
+        # on update exclude your own request
+        if self.instance:
+            pending = pending.exclude(pk=self.instance.pk)
+        
+        if pending.exists():
+            raise ValidationError("One or more records already have a pending request.")
+        
+        if not records:
+            raise ValidationError("Select at least one record.")
+
+        return records
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get("request")
+
+        pending_record_ids =(
+            Request.objects.filter(status='p', owner=request.user, record__isnull=False).values_list(
+                "record", flat=True).distinct()
+
+        ) 
+        if self.instance:
+            pending_record_ids = pending_record_ids.exclude(pk=self.instance.pk)
+
+        if request and request.user.parent_id is not None:
+            fields["record"].child_relation.queryset =  Record.objects.with_financials().filter(
+                customer__assigned_to= request.user).select_related(
+                    "customer", "service").prefetch_related("advanceusage_set" , "allocation_set")\
+                        .filter(_due__gt=0).exclude(pk__in=pending_record_ids)
+            
+        return fields
+
+
+
+    
+
+
+

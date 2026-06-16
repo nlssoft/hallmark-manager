@@ -114,7 +114,7 @@ class RecordAdmin(admin.ModelAdmin):
             super()
             .get_queryset(request)
             .annotate(
-                _paid_amount=(
+                _paid=(
                     Coalesce(
                         Sum("allocation__amount"),
                         Value(0),
@@ -135,10 +135,10 @@ class RecordAdmin(admin.ModelAdmin):
         return obj.amount
 
     def get_paid(self, obj):
-        return obj._paid_amount
+        return obj._paid
 
     def get_due(self, obj):
-        return obj.amount - ((obj._paid_amount or 0) + (obj.discount or 0))
+        return obj.amount - ((obj._paid or 0) + (obj.discount or 0))
 
     # methods
 
@@ -344,11 +344,12 @@ class RequestAdmin(admin.ModelAdmin):
     # view methods
     def get_record(self, obj):
         return ", ".join(str(r) for r in Record.objects.all())
+    
+   
 
     list_display = [
         "owner",
         "get_record",
-        "amount",
         "created_at",
         "status",
         "reason",

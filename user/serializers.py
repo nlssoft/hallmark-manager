@@ -23,6 +23,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "company_address",
             "office_number1",
             "office_number2",
+            "setting_mode",
+            "setting_reason",
         )
 
 
