@@ -12,13 +12,15 @@ from rest_framework.mixins import (
     RetrieveModelMixin,
 )
 from rest_framework.viewsets import GenericViewSet
+from rest_framework.filters import OrderingFilter, SearchFilter
+from django_filters.rest_framework import DjangoFilterBackend
 
 from rest_framework_simplejwt.token_blacklist.models import (
     OutstandingToken,
     BlacklistedToken,
 )
 from core.permissions import ParentAccount_Only
-from core.models import Customer
+from core.models import Customer, Record, Payment
 from .models import User, UserOTP, Employee
 from .serializers import (
     VerifyEmailOTPSerializer,
@@ -39,6 +41,16 @@ from .Services.throttles import OTPCooldownThrottling
 from dj_rest_auth.jwt_auth import get_refresh_view
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.decorators import action
+from django.db.models import (
+    Sum,
+    Value,
+    DecimalField,
+    F,
+    ExpressionWrapper,
+    Subquery,
+    OuterRef,
+)
+from django.db.models.functions import Coalesce
 
 BaseRefreshView = get_refresh_view()
 
@@ -224,6 +236,9 @@ class EmployeeView(
 ):
     serializer_class = EmployeeSerializer
     permission_classes = [ParentAccount_Only]
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["username", "customer__name", "customer__logo"]
+    ordering_fields = ["_work_done", "_payment_recived"]
 
     def get_serializer_class(self):
         if self.action == "sync_employee":
@@ -232,7 +247,36 @@ class EmployeeView(
         return EmployeeSerializer
 
     def get_queryset(self):
-        return Employee.objects.filter(parent=self.request.user)
+
+        record_total = (
+            Record.objects.filter(customer__assigned_to=OuterRef("pk"))
+            .annotate(amount=F("rate") * F("pcs") - F("discount"))
+            .values("customer__assigned_to")
+            .annotate(total=Sum("amount"))
+            .values("total")[:1]
+        )
+
+        payment_total = (
+            Payment.objects.filter(customer__assigned_to=OuterRef("pk"))
+            .values("customer__assigned_to")
+            .annotate(amount=Sum(F("amount")))
+            .values("amount")[:1]
+        )
+
+        return (
+            Employee.objects.filter(parent=self.request.user)
+            .annotate(
+                _work_done=Coalesce(
+                    Subquery(record_total), Value(0), output_field=DecimalField()
+                )
+            )
+            .annotate(
+                _payment_recived=Coalesce(
+                    Subquery(payment_total), Value(0), output_field=DecimalField()
+                )
+            )
+            .prefetch_related("customer_set")
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

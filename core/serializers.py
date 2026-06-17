@@ -6,10 +6,13 @@ from .models import (
     GroupRate,
     Record,
     Payment,
+    Advance,
+    AdvanceUsage,
     AuditLog,
     Request,
     SnapShotRequest,
 )
+from .nestedserializer import NestedCustomerSerializer
 from user.models import Employee
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
@@ -19,25 +22,6 @@ from django.db.models.functions import Coalesce
 from collections import OrderedDict
 from decimal import Decimal
 from django.utils import timezone
-
-# customer serializer .1
-
-
-# Read
-class NestedCustomerSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Customer
-        fields = (
-            "id",
-            "logo",
-            "name",
-            "address",
-            "number",
-            "email",
-        )
-        read_only_fields = fields
-
 
 # group serializers
 
@@ -452,8 +436,17 @@ class WritePaymentSerializer(serializers.ModelSerializer):
         return attrs
 
 
+# Advance Usage nested serializer
+class NestedAdvanceUsageSerializer(serializers.ModelSerializer):
+    record = NestedRecordSerializer()
+
+    class Meta:
+        model = AdvanceUsage
+        fields = ["record", "amount", "created_at"]
+
+
 # advance serializers
-class ReadOnlyAdvanceLogSerializer(serializers.Serializer):
+class ReadOnlyAdvanceLogSerializer(serializers.ModelSerializer):
     customer = NestedCustomerSerializer(read_only=True)
     # advance created
     payment = NestedPaymentSerializer(read_only=True)
@@ -462,18 +455,18 @@ class ReadOnlyAdvanceLogSerializer(serializers.Serializer):
         decimal_places=2,
         read_only=True,
     )
+    left = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_left", read_only=True
+    )
 
     # advance used
-    record = serializers.SerializerMethodField()
-    amount_used = serializers.DecimalField(
-        max_digits=10, decimal_places=2, source="_amount_used", read_only=True
+    usage = NestedAdvanceUsageSerializer(
+        many=True, read_only=True, source="advanceusage_set"
     )
-    created_at = serializers.DateTimeField(read_only=True)
 
-    def get_record(self, obj):
-        usages = obj.advanceusage_set.all()
-        records = [usage.record for usage in usages]
-        return NestedRecordSerializer(records, many=True).data
+    class Meta:
+        model = Advance
+        fields = ["customer", "payment", "total_amount", "created_at", "usage", "left"]
 
 
 # audit log serializers

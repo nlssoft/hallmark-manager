@@ -34,7 +34,6 @@ class Customer(models.Model):
     assigned_to = models.ManyToManyField(
         user,
         blank=True,
-        related_name="assigned_parties",
     )
 
     group = models.ForeignKey(Groups, on_delete=models.SET_NULL, null=True, blank=True)

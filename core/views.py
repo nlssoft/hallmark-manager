@@ -40,7 +40,13 @@ from .money_logic import PaymentService
 from .requestservices import RequestService
 from .services.helper_functions import get_reason
 from .paginations import StandardPagination, LargePagination
-from .filters import RecordFilter, PaymentFilter, AdvanceLogFilter, AuditLogFilter
+from .filters import (
+    RecordFilter,
+    PaymentFilter,
+    AdvanceLogFilter,
+    AuditLogFilter,
+    RequestFilter,
+)
 
 # tools
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -353,8 +359,14 @@ class RecordViewset(ModelViewSet):
             )
         )
 
-        serializer = ReadOnlyRecordSerializer(queryset, many=True)
+        queryset = self.filter_queryset(queryset)
+        page = self.paginate_queryset(queryset)
 
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -438,24 +450,26 @@ class AdvanceLogViewset(ReadOnlyModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = AdvanceLogFilter
     search_fields = ["customer__name", "customer__logo"]
-    ordering_fields = ["total_amount", "created_at"]
+    ordering_fields = ["_left", "total_amount", "created_at"]
 
     serializer_class = ReadOnlyAdvanceLogSerializer
     queryset = Advance.objects.none()
 
     def get_queryset(self):
-        user = self.request.user
-        record_qs = Record.objects.prefetch_related("advanceusage_set").annotate(
-            _amount_used=Coalesce(
-                Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
-            )
-        )
         return (
-            Advance.objects.filter(customer__owner=user)
+            Advance.objects.filter(customer__owner=self.request.user)
+            .annotate(
+                _left=F("total_amount")
+                - Coalesce(
+                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
+                )
+            )
             .select_related("customer", "payment")
             .prefetch_related(
-                "advanceusage_set",
-                Prefetch("advanceusage_set__record", queryset=record_qs),
+                Prefetch(
+                    "advanceusage_set",
+                    queryset=AdvanceUsage.objects.select_related("record"),
+                ),
             )
         ).order_by("-pk")
 
@@ -463,6 +477,10 @@ class AdvanceLogViewset(ReadOnlyModelViewSet):
 class AuditLogViewset(ReadOnlyModelViewSet):
     permission_classes = [ParentAccount_Only]
     pagination_class = LargePagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = AuditLogFilter
+    search_fields = ["before__customer__name", "before__customer__logo"]
+    ordering_fields = ["logged_at"]
 
     serializer_class = ReadOnlyAuditLogSerializer
     queryset = AuditLog.objects.none()
@@ -474,6 +492,10 @@ class AuditLogViewset(ReadOnlyModelViewSet):
 class RequestViewset(ModelViewSet):
     permission_classes = [RequestEndpointPermission]
     pagination_class = StandardPagination
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_class = RequestFilter
+    search_fields = ["owner__username"]
+    ordering_fields = ["created_at"]
 
     def get_serializer_class(self, *args, **kwargs):
         if self.request.method in SAFE_METHODS:
