@@ -221,8 +221,8 @@ class CustomerViewset(ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if (
-            instance.records.exists()
-            or instance.payments.exists()
+            instance.record_set.exists()
+            or instance.payment_set.exists()
             or instance.advances.exists()
         ):
             return Response(
