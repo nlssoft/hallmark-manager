@@ -223,7 +223,6 @@ class CustomerViewset(ModelViewSet):
         if (
             instance.record_set.exists()
             or instance.payment_set.exists()
-            or instance.advances.exists()
         ):
             return Response(
                 {"detail": "Cannot delete customer with existing work history."},

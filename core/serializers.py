@@ -333,6 +333,9 @@ class CreateRecordSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    # def validate_discount(self, attrs):
+    #     rate = self.
+
 
 class UpdateRecordSerializer(serializers.ModelSerializer):
 

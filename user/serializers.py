@@ -254,11 +254,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
     re_password = serializers.CharField(write_only=True)
 
     work_done = serializers.DecimalField(
-        max_digits=10, decimal_places=2, source="_work_done"
+        max_digits=10, decimal_places=2, source="_work_done", read_only=True
     )
 
     payment_recived = serializers.DecimalField(
-        max_digits=10, decimal_places=2, source="_payment_recived"
+        max_digits=10, decimal_places=2, source="_payment_recived", read_only=True
     )
 
     customer = NestedCustomerSerializer(
