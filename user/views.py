@@ -247,35 +247,8 @@ class EmployeeView(
         return EmployeeSerializer
 
     def get_queryset(self):
-
-        record_total = (
-            Record.objects.filter(customer__assigned_to=OuterRef("pk"))
-            .annotate(amount=F("rate") * F("pcs") - F("discount"))
-            .values("customer__assigned_to")
-            .annotate(total=Sum("amount"))
-            .values("total")[:1]
-        )
-
-        payment_total = (
-            Payment.objects.filter(customer__assigned_to=OuterRef("pk"))
-            .values("customer__assigned_to")
-            .annotate(amount=Sum(F("amount")))
-            .values("amount")[:1]
-        )
-
-        return (
-            Employee.objects.filter(parent=self.request.user)
-            .annotate(
-                _work_done=Coalesce(
-                    Subquery(record_total), Value(0), output_field=DecimalField()
-                )
-            )
-            .annotate(
-                _payment_recived=Coalesce(
-                    Subquery(payment_total), Value(0), output_field=DecimalField()
-                )
-            )
-            .prefetch_related("customer_set")
+        return Employee.objects.filter(parent=self.request.user).prefetch_related(
+            "customer_set"
         )
 
     def create(self, request, *args, **kwargs):
@@ -328,16 +301,19 @@ class EmployeeView(
 
         new_id = {c.id for c in serializer.validated_data["customer"]}
 
-        to_be_removed = Customer.objects.filter(assigned_to=employee).exclude(
-            assigned_to__id__in=new_id
+        through = Customer.assigned_to.through
+
+        through.objects.filter(user_id=employee.id).exclude(
+            customer_id__in=new_id
+        ).delete()
+
+        exsisting = set(user_id=employee.id, customer_id__in=new_id).exclude()
+
+        to_be_added = (
+            Customer.objects.filter(owner=request.user, id__in=new_id)
+            .exclude(assigned_to=employee)
+            .values_list("id", flat=True)
         )
-
-        for customer in to_be_removed:
-            customer.assigned_to.remove(employee)
-
-        to_be_added = Customer.objects.filter(
-            owner=request.user, id__in=new_id
-        ).exclude(assigned_to=employee)
 
         for customer in to_be_added:
             customer.assigned_to.add(employee)
