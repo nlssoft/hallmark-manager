@@ -40,7 +40,13 @@ from .permissions import (
 )
 from .money_logic import PaymentService
 from .requestservices import RequestService
-from .services.helper_functions import get_reason, get_customer_ids, get_date_range, get_employee_id, get_include_header
+from .services.helper_functions import (
+    get_reason,
+    get_customer_ids,
+    get_date_range,
+    get_employee_id,
+    get_include_header,
+)
 from .paginations import StandardPagination, LargePagination
 from .filters import (
     RecordFilter,
@@ -75,6 +81,7 @@ from django.db.models import (
     Count,
 )
 from django.db.models.functions import Coalesce
+from decimal import Decimal
 
 
 class GroupsViewset(ModelViewSet):
@@ -83,13 +90,16 @@ class GroupsViewset(ModelViewSet):
     filter_backends = [SearchFilter]
     search_fields = ["name", "customer__name"]
 
-
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Groups.objects.none()
-        
+
         return (
             Groups.objects.filter(owner=user)
             .select_related("owner")
@@ -137,8 +147,6 @@ class GroupsViewset(ModelViewSet):
 
         new_id = {customer.id for customer in serializer.validated_data["customer"]}
 
-
-
         Customer.objects.filter(group=group).exclude(id__in=new_id).update(group=None)
 
         Customer.objects.filter(owner=request.user, id__in=new_id).exclude(
@@ -158,13 +166,15 @@ class CustomerViewset(ModelViewSet):
 
     serializer_class = CustomerSerializer
 
-
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Customer.objects.none()
-
 
         record_total = (
             Record.objects.filter(customer_id=OuterRef("pk"))
@@ -197,7 +207,8 @@ class CustomerViewset(ModelViewSet):
         )
 
         return (
-            Customer.objects.filter(Q(owner=user) | Q(assigned_to=user) ).annotate(
+            Customer.objects.filter(Q(owner=user) | Q(assigned_to=user))
+            .annotate(
                 _record_total=Coalesce(
                     Subquery(record_total, output_field=DecimalField()),
                     Value(0),
@@ -231,10 +242,7 @@ class CustomerViewset(ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        if (
-            instance.record_set.exists()
-            or instance.payment_set.exists()
-        ):
+        if instance.record_set.exists() or instance.payment_set.exists():
             return Response(
                 {"detail": "Cannot delete customer with existing work history."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -251,13 +259,16 @@ class ServiceViewset(ModelViewSet):
 
     serializer_class = ServiceSerializer
 
-
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Service.objects.none()
-        
+
         return Service.objects.filter(owner=user).select_related("owner")
 
 
@@ -270,17 +281,18 @@ class RecordViewset(ModelViewSet):
     ordering_fields = ["_due"]
     ordering = ["-created_at", "-pk"]
 
-
-
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Record.objects.none()
-        
 
         base = Record.objects.with_financials().filter(
-            Q(customer__owner=user) | Q( customer__assigned_to=user)
+            Q(customer__owner=user) | Q(customer__assigned_to=user)
         )
 
         return base.select_related("customer", "service").prefetch_related(
@@ -401,7 +413,11 @@ class PaymentViewset(ModelViewSet):
 
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Payment.objects.none()
 
         return (
@@ -473,13 +489,16 @@ class AdvanceLogViewset(ReadOnlyModelViewSet):
 
     serializer_class = ReadOnlyAdvanceLogSerializer
 
-
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Advance.objects.none()
-        
+
         return (
             Advance.objects.filter(customer__owner=user)
             .annotate(
@@ -507,14 +526,17 @@ class AuditLogViewset(ReadOnlyModelViewSet):
     ordering_fields = ["logged_at"]
 
     serializer_class = ReadOnlyAuditLogSerializer
-    
 
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return AuditLog.objects.none()
-    
+
         return AuditLog.objects.filter(user=user).order_by("-pk")
 
 
@@ -535,9 +557,13 @@ class RequestViewset(ModelViewSet):
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Request.objects.none()
-    
+
         record_qs = (
             Record.objects.select_related("customer", "service")
             .annotate(
@@ -570,7 +596,6 @@ class RequestViewset(ModelViewSet):
             )
             .order_by("-created_at", "-pk")
         )
-
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
@@ -617,51 +642,52 @@ class RequestViewset(ModelViewSet):
 
         return Response(status=status.HTTP_200_OK)
 
-# from here summary endpoints 
+
+# from here summary endpoints
+
 
 class RecordSummaryView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
 
-        separate = request.query_params.get('separate', 'false') == 'true'
+        separate = request.query_params.get("separate", "false") == "true"
 
-        report_type = request.query_params.get('type', 'all')
+        report_type = request.query_params.get("type", "all")
         employee_ids = get_employee_id(request)
         customer_ids = get_customer_ids(request)
         date_from, date_to = get_date_range(request)
 
         # queryset subquery
-        allocation_total = Allocation.objects.filter(
-            record=OuterRef("pk")
-        ).values("record").annotate(
-            total=Sum("amount")
-        ).values("total")
+        allocation_total = (
+            Allocation.objects.filter(record=OuterRef("pk"))
+            .values("record")
+            .annotate(total=Sum("amount"))
+            .values("total")
+        )
 
-        advance_total = AdvanceUsage.objects.filter(
-            record=OuterRef("pk")
-        ).values("record").annotate(
-            total=Sum("amount")
-        ).values("total") 
+        advance_total = (
+            AdvanceUsage.objects.filter(record=OuterRef("pk"))
+            .values("record")
+            .annotate(total=Sum("amount"))
+            .values("total")
+        )
 
         qs = (
             Record.objects.filter(
-                Q(customer__owner=request.user)
-                | Q(customer__assigned_to=request.user)
+                Q(customer__owner=request.user) | Q(customer__assigned_to=request.user)
             )
             .annotate(
-                _paid=
-                    Coalesce(
-                        Subquery(allocation_total),
-                        Value(0),
-                        output_field=DecimalField(),
-                    )
-                    +
-                    Coalesce(
-                        Subquery(advance_total),
-                        Value(0),
-                        output_field=DecimalField(),
-                    ),
+                _paid=Coalesce(
+                    Subquery(allocation_total),
+                    Value(0),
+                    output_field=DecimalField(),
+                )
+                + Coalesce(
+                    Subquery(advance_total),
+                    Value(0),
+                    output_field=DecimalField(),
+                ),
                 _amount=ExpressionWrapper(
                     F("rate") * F("pcs"),
                     output_field=DecimalField(),
@@ -678,60 +704,52 @@ class RecordSummaryView(APIView):
             )
         )
 
-
         if employee_ids is not None:
             qs = qs.filter(customer__assigned_to__pk__in=employee_ids).distinct()
 
         if customer_ids is not None:
-            qs = qs.filter(customer__in= customer_ids)
+            qs = qs.filter(customer__in=customer_ids)
         if date_from is not None:
             qs = qs.filter(created_at__date__gte=date_from)
         if date_to is not None:
             qs = qs.filter(created_at__date__lte=date_to)
 
-        
-        if report_type == 'unpaid':
-            qs= qs.filter(_due__gt=0)
-        if report_type == 'paid':
-            qs= qs.filter(_due__lte=0)
+        if report_type == "unpaid":
+            qs = qs.filter(_due__gt=0)
+        if report_type == "paid":
+            qs = qs.filter(_due__lte=0)
 
+        # company info
+        company_info = get_include_header(request)
 
-        #company info
-        company_info= get_include_header(request)
-
-
-
-        # rows 
+        # rows
         rows = ReportRecordSerializer(
-                qs.select_related('customer', 'service'),
-                many=True
-            ).data
-
-
-
+            qs.select_related("customer", "service"), many=True
+        ).data
 
         if separate:
 
-            record_totals= list(
-                qs.values('customer__pk', 'customer__name')
-                .annotate(
-                    count= Count('pk'),
-                    total_amount= Sum('_amount'),
-                    total_discount= Sum('discount'),
-                    total_paid=Sum('_paid'),
-                    total_due= Sum('_due'),
-                            
-            ))
-        
-            service_totals= list(
-                qs.values('customer__pk', 'customer__name', 'service__pk', 'service__name')
-                .annotate(
-                    total_pcs= Sum('pcs'),
-                    total_service_amount= Sum('_amount'),
-                    total_service_paid= Sum('_paid'),
-                    total_service_due= Sum('_due'),
-                    )
+            record_totals = list(
+                qs.values("customer__pk", "customer__name").annotate(
+                    count=Count("pk"),
+                    total_amount=Sum("_amount"),
+                    total_discount=Sum("discount"),
+                    total_paid=Sum("_paid"),
+                    total_due=Sum("_due"),
                 )
+            )
+
+            service_totals = list(
+                qs.values(
+                    "customer__pk", "customer__name", "service__pk", "service__name"
+                ).annotate(
+                    total_pcs=Sum("pcs"),
+                    total_service_amount=Sum("_amount"),
+                    total_service_discount=Sum("discount"),
+                    total_service_paid=Sum("_paid"),
+                    total_service_due=Sum("_due"),
+                )
+            )
 
             customers = {}
 
@@ -739,120 +757,318 @@ class RecordSummaryView(APIView):
                 cid = t["customer__pk"]
 
                 customers[cid] = {
-                    'customer_id': cid,
-                    'customer_name': t['customer__name'],
-                    'totals': {
+                    "customer_id": cid,
+                    "customer_name": t["customer__name"],
+                    "totals": {
                         "count": t["count"],
-                        "total_amount": t["total_amount"], 
-                        "total_discount": t['total_discount'], 
+                        "total_amount": t["total_amount"],
+                        "total_discount": t["total_discount"],
                         "total_paid": t["total_paid"],
                         "total_due": t["total_due"],
                     },
-                    'service_totals': [],
-                    'records': [],
+                    "service_totals": [],
+                    "records": [],
                 }
 
-
             for st in service_totals:
-                cid= st['customer__pk']
+                cid = st["customer__pk"]
 
-                customers[cid]['service_totals'].append({
-                    'service_id': st["service__pk"],
-                    "service_name": st['service__name'],
-                    "total_pcs": st['total_pcs'],
-                    "total_service_amount": st["total_service_amount"],
-                    "total_service_paid": st["total_service_paid"],
-                    "total_service_due": st["total_service_due"]
-                })
+                customers[cid]["service_totals"].append(
+                    {
+                        "service_id": st["service__pk"],
+                        "service_name": st["service__name"],
+                        "total_pcs": st["total_pcs"],
+                        "total_service_amount": st["total_service_amount"],
+                        "total_service_discount": st["total_service_discount"],
+                        "total_service_paid": st["total_service_paid"],
+                        "total_service_due": st["total_service_due"],
+                    }
+                )
 
             for row in rows:
-                cid= row["customer_id"]
-                customers[cid]['records'].append(row) 
-            
+                cid = row["customer_id"]
+                customers[cid]["records"].append(row)
+
             return Response(
-                {
-                    "header": company_info,
-                    "customers": list(customers.values())
-                },
+                {"header": company_info, "customers": list(customers.values())},
                 status=status.HTTP_200_OK,
             )
 
         else:
-            service_totals= list(qs.values('service__pk', 'service__name').annotate(
-                total_pcs= Sum('pcs'),
-                total_service_amount= Sum('_amount'),
-                total_service_paid= Sum('_paid'),
-                total_service_due= Sum('_due'),
-            ))
-
-            record_totals= qs.aggregate(
-                count= Count('id'),
-                total_amount= Sum('_amount'),
-                total_discount= Sum('discount'),
-                total_paid=Sum('_paid'),
-                total_due= Sum('_due'),
-                
+            service_totals = list(
+                qs.values("service__pk", "service__name").annotate(
+                    total_pcs=Sum("pcs"),
+                    total_service_amount=Sum("_amount"),
+                    total_service_discount=Sum("discount"),
+                    total_service_paid=Sum("_paid"),
+                    total_service_due=Sum("_due"),
+                )
             )
 
-        
-        return Response({
-            "header": company_info,
-            "service_totals": service_totals,
-            "records": rows,
-            'totals': record_totals
-        })
+            record_totals = qs.aggregate(
+                count=Count("id"),
+                total_amount=Sum("_amount"),
+                total_discount=Sum("discount"),
+                total_paid=Sum("_paid"),
+                total_due=Sum("_due"),
+            )
+
+        return Response(
+            {
+                "header": company_info,
+                "service_totals": service_totals,
+                "records": rows,
+                "totals": record_totals,
+            }
+        )
 
 
 class PaymentSummaryView(APIView):
-    permission_classes= [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
 
-        separate = request.query_params.get('separate', 'false') == 'true'
+        separate = request.query_params.get("separate", "false") == "true"
 
-        report_type = request.query_params.get('type', 'all')
+        report_type = request.query_params.get("type", "all")
         employee_ids = get_employee_id(request)
         customer_ids = get_customer_ids(request)
         date_from, date_to = get_date_range(request)
 
-        qs = Payment.objects.filter(Q(customer__owner=self.user) | Q(customer__assigned_to=self.user))
-
+        qs = Payment.objects.with_balance().filter(
+            Q(customer__owner=self.request.user)
+            | Q(customer__assigned_to=self.request.user)
+        )
 
         if employee_ids is not None:
             qs = qs.filter(customer__assigned_to__pk__in=employee_ids).distinct()
 
         if customer_ids is not None:
-            qs = qs.filter(customer__in= customer_ids)
+            qs = qs.filter(customer__in=customer_ids)
         if date_from is not None:
             qs = qs.filter(created_at__date__gte=date_from)
         if date_to is not None:
             qs = qs.filter(created_at__date__lte=date_to)
 
-        
-        if report_type == 'by_record':
-            
-            record_allocation = Record.objects.filter(allocation__payment=OuterRef('pk')).values('record', 'allocation__amount')
-            advance_allocation = Record.objects.filter()
+        # company info
+        company_info = get_include_header(request)
 
-            allocation_record_ids= list(Allocation.objects.filter(payment=).values('record_id'))
-            advanceusage_record_ids = list(AdvanceUsage.objects.filter(advance__payment=OuterRef('pk')).values('record_id'))
+        # rows
+        if report_type == "by_record":
 
-            Record
+            payment_pks = list(qs.values_list("pk", flat=True))
 
-            qs= qs.annotate(
-                
+            # helper queryset
+            allocation = Allocation.objects.filter(payment__in=payment_pks).values(
+                "payment_id", "record_id", "amount"
             )
 
+            advanceusage = AdvanceUsage.objects.filter(
+                advance__payment__in=payment_pks
+            ).values(
+                "advance__payment_id",
+                "amount",
+                "record_id",
+            )
 
+            payment_record_amount = {}
 
-        #company info
-        company_info= get_include_header(request)
+            for a in allocation:
+                key = (a["payment_id"], a["record_id"])
+                payment_record_amount[key] = (
+                    payment_record_amount.get(key, Decimal("0")) + a["amount"]
+                )
 
+            for au in advanceusage:
+                key = (au["advance__payment_id"], au["record_id"])
+                payment_record_amount[key] = (
+                    payment_record_amount.get(key, Decimal("0")) + au["amount"]
+                )
 
+            involved_records_id = {
+                record_id for (_, record_id) in payment_record_amount
+            }
+            record_map = {
+                r.pk: r
+                for r in Record.objects.filter(
+                    pk__in=involved_records_id
+                ).select_related("service")
+            }
 
+            payments = {}
 
+            for p in qs.select_related("customer"):
 
+                payments[p.pk] = {
+                    "payment_id": p.pk,
+                    "customer_id": p.customer_id,
+                    "customer_name": p.customer.name,
+                    "customer_address": p.customer.address,
+                    "amount": p.amount,
+                    "used": p._used,
+                    "left": p._left,
+                    "mode": p.mode,
+                    "created_at": p.created_at,
+                    "records": [],
+                }
 
+            for (p_id, r_id), amount in payment_record_amount.items():
+                if p_id not in payments or r_id not in record_map:
+                    continue
 
+                r = record_map[r_id]
 
+                payments[p_id]["records"].append(
+                    {
+                        "record_pk": r.pk,
+                        "date": r.created_at,
+                        "pcs": r.pcs,
+                        "rate": r.rate,
+                        "amount": (r.rate * r.pcs),
+                        "discount": r.discount,
+                        "allocated_amount": amount,
+                    }
+                )
 
+            service_data = {}
+            seen_records_per_service = {}
+
+            for (p_id, r_id), amount in payment_record_amount.items():
+                if r_id not in record_map:
+                    continue
+
+                r = record_map[r_id]
+                s_id = r.service_id
+
+                if s_id not in service_data:
+
+                    service_data[s_id] = {
+                        "service_id": s_id,
+                        "service_name": r.service.name,
+                        "total_pcs": 0,
+                        "total_allocated": Decimal("0"),
+                    }
+
+                    seen_records_per_service[s_id] = set()
+
+                if r_id not in seen_records_per_service[s_id]:
+                    service_data[s_id]["total_pcs"] += r.pcs
+                    seen_records_per_service[s_id].add(r_id)
+
+                service_data[s_id]["total_allocated"] += amount
+
+            service_totals = list(service_data.values())
+
+            payment_totals = {
+                "count": len(payments),
+                "total_amount": sum(p["amount"] for p in payments.values()),
+                "total_left": sum(p["left"] for p in payments.values()),
+                "cash_count": sum(1 for p in payments.values() if p["mode"] == "c"),
+                "online_count": sum(1 for p in payments.values() if p["mode"] == "o"),
+            }
+
+            if separate:
+
+                customers = {}
+
+                for p in payments.values():
+                    cid = p["customer_id"]
+
+                    if cid not in customers:
+                        customers[cid] = {
+                            "customer_id": cid,
+                            "customer_name": p["customer_name"],
+                            "customer_address": p["customer_address"],
+                            "service_totals": {},
+                            "_seen_records": {},
+                            "payments": [],
+                            "totals": {
+                                "count": 0,
+                                "total_amount": Decimal("0"),
+                                "total_left": Decimal("0"),
+                                "cash_count": 0,
+                                "online_count": 0,
+                            },
+                        }
+                    c = customers[cid]
+
+                    c[payments].append(p)
+                    c["payments"].append(p)
+                    c["totals"]["count"] += 1
+                    c["totals"]["total_amount"] += p["amount"]
+                    c["totals"]["total_left"] += p["left"]
+                    if p["mode"] == "c":
+                        c["totals"]["cash_count"] += 1
+                    else:
+                        c["totals"]["online_count"] += 1
+
+                for (p_id, r_id), amount in payment_record_amount.items():
+                    if p_id not in payments or r_id not in record_map:
+                        continue
+
+                    cid = payments[p_id]["customer_id"]
+                    r = record_map[r_id]
+                    s_id = r.service_id
+                    c = customers[cid]
+
+                    if s_id not in c[service_totals]:
+                        c["service_totals"][s_id] = {
+                            "service_id": s_id,
+                            "service_name": r.service.name,
+                            "total_pcs": 0,
+                            "total_allocated": Decimal("0"),
+                        }
+                        c["_seen_records"][s_id] = {}
+
+                    if r_id not in c["_seen_records"]["s_id"]:
+                        c["service_totals"][s_id]["total_pcs"] += r.pcs
+                        c["_seen_records"][s_id].add(r_id)
+
+                    c["service_totals"][s_id]["total_allocated"] += amount
+
+                    result = []
+                    for c in customers.values():
+                        result.append(
+                            {
+                                "customer_id": c["customer_id"],
+                                "customer_name": c["customer_name"],
+                                "customer_address": c["customer_address"],
+                                "service_totals": list(c["service_totals"].values()),
+                                "payments": c["payments"],
+                                "totals": c["totals"],
+                            }
+                        )
+
+                    return Response(
+                        {
+                            "header": company_info,
+                            "customers": result,
+                        }
+                    )
+
+                else:
+                    return Response(
+                        {
+                            "header": company_info,
+                            "service_totals": service_totals,
+                            "payments": list(payments.values()),
+                            "totals": payment_totals,
+                        }
+                    )
+
+        else:
+            payment_totals = {
+                "count": len(qs),
+                "total_amount": sum(p["amount"] for p in qs.values()),
+                "total_left": sum(p["left"] for p in qs.values()),
+                "cash_count": sum(1 for p in qs.values() if p["mode"] == "c"),
+                "online_count": sum(1 for p in qs.values() if p["mode"] == "o"),
+            }
+
+            return Response(
+                {
+                    "header": company_info,
+                    "payments": qs,
+                    "payment_totals": payment_totals,
+                }
+            )

@@ -140,8 +140,6 @@ class RemoveServiceGroupSerializer(serializers.ModelSerializer):
             self.fields["service"].queryset = Service.objects.none()
 
 
-
-
 class sync_customerSerializer(serializers.Serializer):
     customer = serializers.PrimaryKeyRelatedField(
         queryset=Customer.objects.all(), many=True
@@ -151,7 +149,7 @@ class sync_customerSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
 
         request = self.context.get("request")
-        user = getattr(request, 'user', None)
+        user = getattr(request, "user", None)
 
         if user and user.is_authenticated:
             self.fields["customer"].queryset = Customer.objects.filter(owner=user)
@@ -315,9 +313,9 @@ class ReportRecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_due"
     )
 
-    customer_id = serializers.IntegerField(source='customer.pk', read_only=True)
-    customer_name = serializers.CharField(source= "customer.name", read_only=True)
-    customer_address= serializers.CharField(source= "customer.address", read_only=True)
+    customer_id = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_name = serializers.CharField(source="customer.name", read_only=True)
+    customer_address = serializers.CharField(source="customer.address", read_only=True)
 
     service = serializers.CharField(source="service.name", read_only=True)
 
@@ -338,8 +336,6 @@ class ReportRecordSerializer(serializers.ModelSerializer):
             "due",
         )
         read_only_fields = fields
-
-
 
 
 # Write
@@ -378,9 +374,9 @@ class CreateRecordSerializer(serializers.ModelSerializer):
             if not exists:
                 raise ValidationError("No rate defined for this service.")
 
-        rate = attrs.get('rate', 0)
-        pcs = attrs.get('pcs', 0)
-        discount= attrs.get('discount', 0)
+        rate = attrs.get("rate", 0)
+        pcs = attrs.get("pcs", 0)
+        discount = attrs.get("discount", 0)
 
         amount = rate * pcs
 
@@ -388,8 +384,6 @@ class CreateRecordSerializer(serializers.ModelSerializer):
             raise ValidationError("Discount cannot be greater then amount.")
 
         return attrs
- 
-        
 
 
 class UpdateRecordSerializer(serializers.ModelSerializer):
@@ -429,16 +423,13 @@ class UpdateRecordSerializer(serializers.ModelSerializer):
         rate = attrs.get("rate", self.instance.rate)
         pcs = attrs.get("pcs", self.instance.pcs)
         discount = attrs.get("discount", self.instance.discount)
-        
+
         amount = rate * pcs
 
         if discount > amount:
             raise ValidationError("Discount cannot be greater then amount.")
 
-        
-        
         return attrs
-
 
 
 # payment serializers
@@ -661,7 +652,7 @@ class WriteRequestSerializer(serializers.ModelSerializer):
     def get_fields(self):
         fields = super().get_fields()
         request = self.context.get("request")
-        user= getattr(request, "user", None)
+        user = getattr(request, "user", None)
 
         if not user or not user.is_authenticated:
             fields["record"].child_relation.queryset = Record.objects.none()
