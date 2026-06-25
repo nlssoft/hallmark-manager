@@ -12,4 +12,4 @@ user = get_user_model()
 def create_profile(sender, instance, created, **kwargs):
     if created:
         if instance.parent is None:
-            Profile.objects.create(user=instance)
+            Profile.objects.create(owner=instance)

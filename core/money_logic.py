@@ -1,6 +1,4 @@
 from .models import Record, Allocation, Payment, Advance, AdvanceUsage, Customer
-from django.db.models import Sum, F, Value, DecimalField, ExpressionWrapper
-from django.db.models.functions import Coalesce
 from decimal import Decimal
 
 

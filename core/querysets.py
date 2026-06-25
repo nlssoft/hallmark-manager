@@ -1,4 +1,5 @@
-from django.db.models import QuerySet, Sum, F, Value, DecimalField, ExpressionWrapper, OuterRef, Subquery, Case, When
+from django.db.models import QuerySet, Sum, F, Value, DecimalField, ExpressionWrapper,\
+      OuterRef, Subquery, Case, When
 from django.db.models.functions import Coalesce
 
 

@@ -8,6 +8,7 @@ from django.db.models.functions import Coalesce
 from django.core.validators import MinValueValidator
 from .querysets import RecordQuerySet, PaymentQuerySet, AdvanceQuerySet
 
+
 user = get_user_model()
 
 

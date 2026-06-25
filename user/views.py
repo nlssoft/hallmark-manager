@@ -12,15 +12,15 @@ from rest_framework.mixins import (
     RetrieveModelMixin,
 )
 from rest_framework.viewsets import GenericViewSet
-from rest_framework.filters import OrderingFilter, SearchFilter
-from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.filters import SearchFilter
+
 
 from rest_framework_simplejwt.token_blacklist.models import (
     OutstandingToken,
     BlacklistedToken,
 )
 from core.permissions import ParentAccount_Only
-from core.models import Customer, Record, Payment
+from core.models import Customer
 from .models import User, UserOTP, Employee
 from .serializers import (
     VerifyEmailOTPSerializer,
@@ -41,16 +41,7 @@ from .Services.throttles import OTPCooldownThrottling
 from dj_rest_auth.jwt_auth import get_refresh_view
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.decorators import action
-from django.db.models import (
-    Sum,
-    Value,
-    DecimalField,
-    F,
-    ExpressionWrapper,
-    Subquery,
-    OuterRef,
-)
-from django.db.models.functions import Coalesce
+
 
 BaseRefreshView = get_refresh_view()
 
@@ -236,9 +227,8 @@ class EmployeeView(
 ):
     serializer_class = EmployeeSerializer
     permission_classes = [ParentAccount_Only]
-    filter_backends = [SearchFilter, OrderingFilter]
+    filter_backends = [SearchFilter]
     search_fields = ["username", "customer__name", "customer__logo"]
-    ordering_fields = ["_work_done", "_payment_recived"]
 
     def get_serializer_class(self):
         if self.action == "sync_employee":
@@ -247,9 +237,14 @@ class EmployeeView(
         return EmployeeSerializer
 
     def get_queryset(self):
-        return Employee.objects.filter(parent=self.request.user).prefetch_related(
+        user = getattr(self.request, "user", None)
+
+        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+            return Employee.objects.none()
+
+        return Employee.objects.filter(parent=user).prefetch_related(
             "customer_set"
-        )
+        ).order_by("id")
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -307,15 +302,20 @@ class EmployeeView(
             customer_id__in=new_id
         ).delete()
 
-        exsisting = set(user_id=employee.id, customer_id__in=new_id).exclude()
-
-        to_be_added = (
-            Customer.objects.filter(owner=request.user, id__in=new_id)
-            .exclude(assigned_to=employee)
-            .values_list("id", flat=True)
+        existing = set(
+            through.objects.filter(
+                user_id=employee.id,
+                customer_id__in=new_id
+            ).values_list("customer_id", flat=True)
         )
 
-        for customer in to_be_added:
-            customer.assigned_to.add(employee)
+        through.objects.bulk_create(
+            [
+                through(customer_id=cid, user_id=employee.id)
+                for cid in (new_id - existing)
+            ],
+            ignore_conflicts=True,
+        )
+
 
         return Response({"synced": len(new_id)})

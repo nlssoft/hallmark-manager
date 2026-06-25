@@ -13,12 +13,9 @@ from .models import (
     SnapShotRequest,
 )
 from .nestedserializer import NestedCustomerSerializer
-from user.models import Employee
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum, F, Value, DecimalField
-from django.db.models.functions import Coalesce
 from collections import OrderedDict
 from decimal import Decimal
 from django.utils import timezone
@@ -83,8 +80,12 @@ class WriteGroupSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
 
         request = self.context.get("request")
-        if request:
-            self.fields["service"].queryset = Service.objects.filter(owner=request.user)
+        user = getattr(request, "user", None)
+
+        if user and user.is_authenticated:
+            self.fields["service"].queryset = Service.objects.filter(owner=user)
+        else:
+            self.fields["service"].queryset = Service.objects.none()
 
     def validate(self, attrs):
         service = attrs.get("service")
@@ -131,8 +132,14 @@ class RemoveServiceGroupSerializer(serializers.ModelSerializer):
         super().__init__(*args, **kwargs)
 
         request = self.context.get("request")
-        if request:
-            self.fields["service"].queryset = Service.objects.filter(owner=request.user)
+        user = getattr(request, "user", None)
+
+        if user and user.is_authenticated:
+            self.fields["service"].queryset = Service.objects.filter(owner=user)
+        else:
+            self.fields["service"].queryset = Service.objects.none()
+
+
 
 
 class sync_customerSerializer(serializers.Serializer):
@@ -144,10 +151,12 @@ class sync_customerSerializer(serializers.Serializer):
         super().__init__(*args, **kwargs)
 
         request = self.context.get("request")
-        if request:
-            self.fields["customer"].queryset = Customer.objects.filter(
-                owner=request.user
-            )
+        user = getattr(request, 'user', None)
+
+        if user and user.is_authenticated:
+            self.fields["customer"].queryset = Customer.objects.filter(owner=user)
+        else:
+            self.fields["customer"].queryset = Customer.objects.none()
 
 
 # customer serializers .2
@@ -295,6 +304,44 @@ class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ReportRecordSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, source="_amount"
+    )
+    paid_amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, source="_paid"
+    )
+    due = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True, source="_due"
+    )
+
+    customer_id = serializers.IntegerField(source='customer.pk', read_only=True)
+    customer_name = serializers.CharField(source= "customer.name", read_only=True)
+    customer_address= serializers.CharField(source= "customer.address", read_only=True)
+
+    service = serializers.CharField(source="service.name", read_only=True)
+
+    class Meta:
+        model = Record
+        fields = (
+            "id",
+            "customer_id",
+            "customer_name",
+            "customer_address",
+            "service",
+            "pcs",
+            "created_at",
+            "rate",
+            "discount",
+            "amount",
+            "paid_amount",
+            "due",
+        )
+        read_only_fields = fields
+
+
+
+
 # Write
 class CreateRecordSerializer(serializers.ModelSerializer):
     pay = serializers.BooleanField(write_only=True, required=False, default=False)
@@ -331,10 +378,18 @@ class CreateRecordSerializer(serializers.ModelSerializer):
             if not exists:
                 raise ValidationError("No rate defined for this service.")
 
-        return attrs
+        rate = attrs.get('rate', 0)
+        pcs = attrs.get('pcs', 0)
+        discount= attrs.get('discount', 0)
 
-    # def validate_discount(self, attrs):
-    #     rate = self.
+        amount = rate * pcs
+
+        if discount > amount:
+            raise ValidationError("Discount cannot be greater then amount.")
+
+        return attrs
+ 
+        
 
 
 class UpdateRecordSerializer(serializers.ModelSerializer):
@@ -370,7 +425,20 @@ class UpdateRecordSerializer(serializers.ModelSerializer):
                             )
                         }
                     )
+
+        rate = attrs.get("rate", self.instance.rate)
+        pcs = attrs.get("pcs", self.instance.pcs)
+        discount = attrs.get("discount", self.instance.discount)
+        
+        amount = rate * pcs
+
+        if discount > amount:
+            raise ValidationError("Discount cannot be greater then amount.")
+
+        
+        
         return attrs
+
 
 
 # payment serializers
@@ -593,6 +661,11 @@ class WriteRequestSerializer(serializers.ModelSerializer):
     def get_fields(self):
         fields = super().get_fields()
         request = self.context.get("request")
+        user= getattr(request, "user", None)
+
+        if not user or not user.is_authenticated:
+            fields["record"].child_relation.queryset = Record.objects.none()
+            return fields
 
         pending_record_ids = (
             Request.objects.filter(status="p", owner=request.user, record__isnull=False)
@@ -602,7 +675,7 @@ class WriteRequestSerializer(serializers.ModelSerializer):
         if self.instance:
             pending_record_ids = pending_record_ids.exclude(pk=self.instance.pk)
 
-        if request and request.user.parent_id is not None:
+        if user.parent_id is not None:
             fields["record"].child_relation.queryset = (
                 Record.objects.with_financials()
                 .filter(customer__assigned_to=request.user)

@@ -1,4 +1,6 @@
 from rest_framework.routers import SimpleRouter
+from django.urls import path
+
 from .views import (
     CustomerViewset,
     GroupsViewset,
@@ -8,6 +10,7 @@ from .views import (
     AdvanceLogViewset,
     AuditLogViewset,
     RequestViewset,
+    RecordSummaryView,
 )
 
 router = SimpleRouter()
@@ -22,4 +25,10 @@ router.register("advance-log", AdvanceLogViewset, basename="advance-log")
 router.register("audit-log", AuditLogViewset, basename="audit-log")
 router.register("requests", RequestViewset, basename="requests")
 
-urlpatterns = router.urls
+
+
+
+urlpatterns = [
+    path('summary/records/',   RecordSummaryView.as_view()),
+
+] + router.urls 

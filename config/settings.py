@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",
+    'django_extensions',
     # cloudinary
     "cloudinary_storage",
     "cloudinary",
@@ -232,7 +233,7 @@ if DEBUG and importlib.util.find_spec("debug_toolbar"):
                 "cookieAuth": {
                     "type": "apiKey",
                     "in": "cookie",
-                    "name": "access_token",
+                    "name": "access-token",
                 }
             }
         },

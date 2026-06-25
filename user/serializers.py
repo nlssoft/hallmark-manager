@@ -1,6 +1,7 @@
 # cls
 from .models import User, Employee, Profile, UserOTP
 from core.models import Customer
+from core.nestedserializer import NestedCustomerSerializer
 
 # import cls
 from dj_rest_auth.registration.serializers import RegisterSerializer
@@ -26,6 +27,13 @@ class ProfileSerializer(serializers.ModelSerializer):
             "setting_mode",
             "setting_reason",
         )
+    
+    def validate(self, attrs):
+        user = self.context["request"].user
+        if user.parent:
+            raise ValidationError("Employee cannot create profile.")
+        return attrs
+
         
 
 
@@ -247,6 +255,12 @@ class EmployeeSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     re_password = serializers.CharField(write_only=True)
 
+
+    customer = NestedCustomerSerializer(
+        read_only=True, many=True, source="customer_set"
+    )
+
+
     class Meta:
         model = Employee
         fields = [
@@ -255,6 +269,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "password",
             "re_password",
             "email",
+            "customer",
         ]
         read_only_fields = ["pk"]
 
@@ -294,12 +309,20 @@ class Sync_Employee(serializers.Serializer):
         super().__init__(*args, **kwargs)
 
         request = self.context.get("request")
-        if request:
-            self.fields["customer"].queryset = Customer.objects.filter(
-                owner=request.user
-            )
+        user = getattr(request, "user", None)
 
+        if user and user.is_authenticated:
+            self.fields["customer"].queryset = Customer.objects.filter(owner=user)
+        else:
+            self.fields["customer"].queryset = Customer.objects.none()
 
-class ReadOnlyEmployeeSerializer(EmployeeSerializer):
-    class Meta(EmployeeSerializer.Meta):
-        read_only_fields = EmployeeSerializer.Meta.fields
+class ReadOnlyEmployeeSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Employee
+        fields = [
+            "pk",
+            "username",
+            "email",
+        ]
+        read_only_fields = ["pk"]
