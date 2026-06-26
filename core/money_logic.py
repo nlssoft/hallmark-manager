@@ -39,7 +39,7 @@ class PaymentService:
     def advance_allocate(record):
         customer = record.customer
         try:
-            due = record._left
+            due = record._due
         except AttributeError:
             due = record.amount - ((record.discount or 0))
 
@@ -186,7 +186,7 @@ class PaymentService:
         PaymentService.allocate(payment)
 
     @staticmethod
-    def re_balance(customer):
+    def re_balance(customer, record_id):
         # All payments for this customer, oldest first
         payments = (
             Payment.objects.with_balance().filter(customer=customer)
@@ -194,10 +194,18 @@ class PaymentService:
             .order_by("created_at")
         )
 
-        # All unpaid records, oldest first
+
+        # first the record being updated then All unpaid records, oldest first
+        single_record = (
+                Record.objects
+                .with_financials()
+                .get(pk=record_id)
+            )
+        
         records = (
             Record.objects.with_financials().filter(customer=customer)
             .filter(_due__gt=0)
+            .exclude(pk=record_id)
             .order_by("created_at")
         )
 
@@ -206,6 +214,17 @@ class PaymentService:
 
             if unallocated <= 0:
                 continue
+
+
+            if single_record._due  > 0:
+                apply = min(unallocated, single_record._due)
+                Allocation.objects.create(payment=payment, record=single_record, amount=apply)
+                single_record._due -= apply
+                unallocated -= apply
+
+                # break the inner Loop if payment._left is finshied
+                if unallocated <= 0:
+                    continue
 
             for record in records:
                 if record._due <= 0:
@@ -228,8 +247,9 @@ class PaymentService:
         # Now after this if there is some unpaid record left
         # then run advance on them
 
-        records = records.filter(_due__gt=0)
+        if single_record._due > 0:
+            PaymentService.advance_allocate(single_record)
 
-        if records:
-            for record in records:
-                PaymentService.advance_allocate(record)
+        for record in records:
+            PaymentService.advance_allocate(record)
+

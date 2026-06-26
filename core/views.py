@@ -334,7 +334,7 @@ class RecordViewset(ModelViewSet):
 
         PaymentService.record_rollback(record)
         response = super().update(request, *args, **kwargs)
-        PaymentService.re_balance(record.customer)
+        PaymentService.re_balance(record.customer, record_id)
         after = dict(
             ReadOnlyRecordSerializer(self.get_queryset().get(pk=record.pk)).data
         )
@@ -421,7 +421,7 @@ class PaymentViewset(ModelViewSet):
             return Payment.objects.none()
 
         return (
-            Payment.objects.filter(customer__owner=user)
+            Payment.objects.with_balance().filter(customer__owner=user)
             .select_related("customer")
             .order_by("-created_at", "-pk")
         )
@@ -674,34 +674,10 @@ class RecordSummaryView(APIView):
         )
 
         qs = (
-            Record.objects.filter(
+            Record.objects.with_financials().filter(
                 Q(customer__owner=request.user) | Q(customer__assigned_to=request.user)
             )
-            .annotate(
-                _paid=Coalesce(
-                    Subquery(allocation_total),
-                    Value(0),
-                    output_field=DecimalField(),
-                )
-                + Coalesce(
-                    Subquery(advance_total),
-                    Value(0),
-                    output_field=DecimalField(),
-                ),
-                _amount=ExpressionWrapper(
-                    F("rate") * F("pcs"),
-                    output_field=DecimalField(),
-                ),
-            )
-            .annotate(
-                _due=F("_amount")
-                - F("_paid")
-                - Coalesce(
-                    F("discount"),
-                    Value(0),
-                    output_field=DecimalField(),
-                )
-            )
+            
         )
 
         if employee_ids is not None:

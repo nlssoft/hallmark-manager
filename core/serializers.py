@@ -301,6 +301,21 @@ class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
+class PaymentNestedRecordSerializer(serializers.ModelSerializer):
+
+    amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    service = serializers.CharField(source="service.name", read_only=True)
+
+    used= serializers.m
+
+    class Meta:
+        model = Record
+        fields = ("id", "service", "pcs", "rate", "discount", "amount")
+        read_only_fields = fields
 
 class ReportRecordSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
@@ -448,6 +463,8 @@ class CloudInaryImageField(serializers.ImageField):
 class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
     customer = NestedCustomerSerializer(read_only=True)
     image = CloudInaryImageField(read_only=True)
+    left = serializers.DecimalField(max_digits=10, decimal_places=2, source="_left", read_only=True)
+    record= serializers.
 
     class Meta:
         model = Payment
@@ -456,6 +473,7 @@ class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
             "customer",
             "mode",
             "amount",
+            "left",
             "image",
             "created_at",
         )
