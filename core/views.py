@@ -26,7 +26,6 @@ from .serializers import (
     CreateRecordSerializer,
     ReadOnlyPaymentSerializer,
     WritePaymentSerializer,
-    ReadOnlyAdvanceLogSerializer,
     ReadOnlyAuditLogSerializer,
     ReadOnlyRequestSerializer,
     WriteRequestSerializer,
@@ -51,7 +50,6 @@ from .paginations import StandardPagination, LargePagination
 from .filters import (
     RecordFilter,
     PaymentFilter,
-    AdvanceLogFilter,
     AuditLogFilter,
     RequestFilter,
 )
@@ -421,8 +419,26 @@ class PaymentViewset(ModelViewSet):
             return Payment.objects.none()
 
         return (
-            Payment.objects.with_balance().filter(customer__owner=user)
+            Payment.objects.with_balance()
+            .filter(customer__owner=user)
             .select_related("customer")
+            .prefetch_related(
+                Prefetch(
+                    "allocation_set",
+                    queryset=Allocation.objects.select_related("record__service"),
+                ),
+                Prefetch(
+                    "advance_set",
+                    queryset=Advance.objects.prefetch_related(
+                        Prefetch(
+                            "advanceusage_set",
+                            queryset=AdvanceUsage.objects.select_related(
+                                "record__service"
+                            ),
+                        )
+                    ),
+                ),
+            )
             .order_by("-created_at", "-pk")
         )
 
@@ -477,44 +493,6 @@ class PaymentViewset(ModelViewSet):
             model="p", user=request.user, before=before, action="d", reason=reason
         )
         return super().destroy(request, *args, **kwargs)
-
-
-class AdvanceLogViewset(ReadOnlyModelViewSet):
-    permission_classes = [ParentAccount_Only]
-    pagination_class = LargePagination
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_class = AdvanceLogFilter
-    search_fields = ["customer__name", "customer__logo"]
-    ordering_fields = ["_left", "total_amount", "created_at"]
-
-    serializer_class = ReadOnlyAdvanceLogSerializer
-
-    def get_queryset(self):
-        user = getattr(self.request, "user", None)
-
-        if (
-            getattr(self, "swagger_fake_view", False)
-            or not user
-            or not user.is_authenticated
-        ):
-            return Advance.objects.none()
-
-        return (
-            Advance.objects.filter(customer__owner=user)
-            .annotate(
-                _left=F("total_amount")
-                - Coalesce(
-                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
-                )
-            )
-            .select_related("customer", "payment")
-            .prefetch_related(
-                Prefetch(
-                    "advanceusage_set",
-                    queryset=AdvanceUsage.objects.select_related("record"),
-                ),
-            )
-        ).order_by("-pk")
 
 
 class AuditLogViewset(ReadOnlyModelViewSet):
@@ -673,11 +651,8 @@ class RecordSummaryView(APIView):
             .values("total")
         )
 
-        qs = (
-            Record.objects.with_financials().filter(
-                Q(customer__owner=request.user) | Q(customer__assigned_to=request.user)
-            )
-            
+        qs = Record.objects.with_financials().filter(
+            Q(customer__owner=request.user) | Q(customer__assigned_to=request.user)
         )
 
         if employee_ids is not None:

@@ -18,6 +18,7 @@ from rest_framework.exceptions import ValidationError
 from django.db import transaction
 from collections import OrderedDict
 from decimal import Decimal
+from collections import defaultdict
 from django.utils import timezone
 
 # group serializers
@@ -259,21 +260,6 @@ class ReadOnlyRecordSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class NestedRecordSerializer(serializers.ModelSerializer):
-
-    amount = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-    service = serializers.CharField(source="service.name", read_only=True)
-
-    class Meta:
-        model = Record
-        fields = ("id", "service", "pcs", "rate", "discount", "amount")
-        read_only_fields = fields
-
-
 class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True, source="_amount"
@@ -301,6 +287,7 @@ class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
+
 class PaymentNestedRecordSerializer(serializers.ModelSerializer):
 
     amount = serializers.DecimalField(
@@ -310,12 +297,17 @@ class PaymentNestedRecordSerializer(serializers.ModelSerializer):
     )
     service = serializers.CharField(source="service.name", read_only=True)
 
-    used= serializers.m
+    used = serializers.SerializerMethodField()
 
     class Meta:
         model = Record
-        fields = ("id", "service", "pcs", "rate", "discount", "amount")
+        fields = ("id", "service", "pcs", "rate", "discount", "amount", "used")
         read_only_fields = fields
+
+    def get_used(self, record):
+        allocated_money_map = self.context.get("allocated_money_map", {})
+        return allocated_money_map.get(record.id, Decimal("0.00"))
+
 
 class ReportRecordSerializer(serializers.ModelSerializer):
     amount = serializers.DecimalField(
@@ -463,8 +455,10 @@ class CloudInaryImageField(serializers.ImageField):
 class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
     customer = NestedCustomerSerializer(read_only=True)
     image = CloudInaryImageField(read_only=True)
-    left = serializers.DecimalField(max_digits=10, decimal_places=2, source="_left", read_only=True)
-    record= serializers.
+    left = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_left", read_only=True
+    )
+    records = serializers.SerializerMethodField()
 
     class Meta:
         model = Payment
@@ -476,7 +470,27 @@ class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
             "left",
             "image",
             "created_at",
+            "records",
         )
+
+    def get_records(self, payment):
+        combined_allocated = defaultdict(Decimal)
+        record_by_id = {}
+
+        for a in payment.allocation_set.all():
+            combined_allocated[a.record_id] += a.amount
+            record_by_id[a.record_id] = a.record
+
+        for a in payment.advance_set.all():
+            for au in a.advanceusage_set.all():
+                combined_allocated[au.record_id] += au.amount
+                record_by_id[au.record_id] = au.record
+
+        return PaymentNestedRecordSerializer(
+            list(record_by_id.values()),
+            many=True,
+            context={**self.context, "allocated_money_map": dict(combined_allocated)},
+        ).data
 
 
 class NestedPaymentSerializer(serializers.ModelSerializer):
@@ -514,39 +528,6 @@ class WritePaymentSerializer(serializers.ModelSerializer):
         ):
             raise ValidationError({"message": "Image is required for online payments."})
         return attrs
-
-
-# Advance Usage nested serializer
-class NestedAdvanceUsageSerializer(serializers.ModelSerializer):
-    record = NestedRecordSerializer()
-
-    class Meta:
-        model = AdvanceUsage
-        fields = ["record", "amount", "created_at"]
-
-
-# advance serializers
-class ReadOnlyAdvanceLogSerializer(serializers.ModelSerializer):
-    customer = NestedCustomerSerializer(read_only=True)
-    # advance created
-    payment = NestedPaymentSerializer(read_only=True)
-    total_amount = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-    left = serializers.DecimalField(
-        max_digits=10, decimal_places=2, source="_left", read_only=True
-    )
-
-    # advance used
-    usage = NestedAdvanceUsageSerializer(
-        many=True, read_only=True, source="advanceusage_set"
-    )
-
-    class Meta:
-        model = Advance
-        fields = ["customer", "payment", "total_amount", "created_at", "usage", "left"]
 
 
 # audit log serializers
@@ -695,3 +676,58 @@ class WriteRequestSerializer(serializers.ModelSerializer):
             )
 
         return fields
+
+
+"""
+# need to think about
+
+
+class NestedRecordSerializer(serializers.ModelSerializer):
+
+    amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    service = serializers.CharField(source="service.name", read_only=True)
+
+    class Meta:
+        model = Record
+        fields = ("id", "service", "pcs", "rate", "discount", "amount")
+        read_only_fields = fields
+
+
+# Advance Usage nested serializer
+class NestedAdvanceUsageSerializer(serializers.ModelSerializer):
+    record = NestedRecordSerializer()
+
+    class Meta:
+        model = AdvanceUsage
+        fields = ["record", "amount", "created_at"]
+
+
+
+class ReadOnlyAdvanceLogSerializer(serializers.ModelSerializer):
+    customer = NestedCustomerSerializer(read_only=True)
+    # advance created
+    payment = NestedPaymentSerializer(read_only=True)
+    total_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    left = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_left", read_only=True
+    )
+
+    # advance used
+    usage = NestedAdvanceUsageSerializer(
+        many=True, read_only=True, source="advanceusage_set"
+    )
+
+    class Meta:
+        model = Advance
+        fields = ["customer", "payment", "total_amount", "created_at", "usage", "left"]
+
+
+"""
