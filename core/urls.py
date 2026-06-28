@@ -10,6 +10,7 @@ from .views import (
     AuditLogViewset,
     RequestViewset,
     RecordSummaryView,
+    PaymentSummaryView,
 )
 
 router = SimpleRouter()
@@ -26,4 +27,5 @@ router.register("requests", RequestViewset, basename="requests")
 
 urlpatterns = [
     path("summary/records/", RecordSummaryView.as_view()),
+    path("summary/payments/", PaymentSummaryView.as_view()),
 ] + router.urls

@@ -12,6 +12,7 @@ from django.db.models import Q
 
 #     return reason
 
+
 # for Audit log
 def get_reason(request):
 
@@ -28,66 +29,58 @@ def get_reason(request):
 
 # for summary endpoint
 
+
 def get_customer_ids(request):
 
-    raw = request.query_params.get('customer_ids')
+    raw = request.query_params.get("customer_ids")
 
     if not raw:
         return None
-    
-    
-    
+
     return [
         int(customer_id)
-        for customer_id in raw.split(',')
+        for customer_id in raw.split(",")
         if customer_id.strip().isdigit()
     ]
 
 
-
 def get_employee_id(request):
 
-    raw = request.query_params.get('employee_ids')
+    raw = request.query_params.get("employee_ids")
 
     if not raw:
         return None
-    
-    ids=  [
 
-        int(id) 
-        for id in raw.split(',') 
-        if id.strip().isdigit()
-    ]
+    ids = [int(id) for id in raw.split(",") if id.strip().isdigit()]
 
-    employee = Employee.objects.filter(
-        pk__in= ids,
-        parent=request.user
-    )
+    employee = Employee.objects.filter(pk__in=ids, parent=request.user)
 
     if employee.count() != len(ids):
-        raise ValidationError('One  or more Employee not found.')
-    
+        raise ValidationError("One  or more Employee not found.")
+
     return ids
 
-    
+
 def get_date_range(request):
 
-    date_from = parse_date(request.query_params.get('from', ''))
-    date_to = (request.query_params.get('to', '')
-)
+    date_from = parse_date(request.query_params.get("from", ""))
+    date_to = parse_date(request.query_params.get("to", ""))
+
     return date_from, date_to
 
+
 def get_include_header(request):
-    
-    include_header= request.query_params.get('include_header', 'false') == 'true'
+
+    include_header = request.query_params.get("include_header", "false") == "true"
 
     if include_header:
-        return Profile.objects.filter(Q(owner=request.user.profile) | Q(owner=request.user.parent.profile)).values(
-            'company_name',
-            'company_address', 
-            'office_number1' ,
-            'office_number2' ,
-
-        ).first()
-
-
+        return (
+            Profile.objects.filter(Q(owner=request.user) | Q(owner=request.user.parent))
+            .values(
+                "company_name",
+                "company_address",
+                "office_number1",
+                "office_number2",
+            )
+            .first()
+        )

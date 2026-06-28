@@ -26,6 +26,8 @@ from .serializers import (
     CreateRecordSerializer,
     ReadOnlyPaymentSerializer,
     WritePaymentSerializer,
+    ReportPaymentSerializer,
+    ReportPaymentOnlySerializer,
     ReadOnlyAuditLogSerializer,
     ReadOnlyRequestSerializer,
     WriteRequestSerializer,
@@ -80,6 +82,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 from decimal import Decimal
+from collections import defaultdict
 
 
 class GroupsViewset(ModelViewSet):
@@ -636,23 +639,13 @@ class RecordSummaryView(APIView):
         customer_ids = get_customer_ids(request)
         date_from, date_to = get_date_range(request)
 
-        # queryset subquery
-        allocation_total = (
-            Allocation.objects.filter(record=OuterRef("pk"))
-            .values("record")
-            .annotate(total=Sum("amount"))
-            .values("total")
-        )
-
-        advance_total = (
-            AdvanceUsage.objects.filter(record=OuterRef("pk"))
-            .values("record")
-            .annotate(total=Sum("amount"))
-            .values("total")
-        )
-
-        qs = Record.objects.with_financials().filter(
-            Q(customer__owner=request.user) | Q(customer__assigned_to=request.user)
+        qs = (
+            Record.objects.with_financials()
+            .filter(
+                Q(customer__owner=request.user) | Q(customer__assigned_to=request.user)
+            )
+            .select_related("customer", "service")
+            .distinct()
         )
 
         if employee_ids is not None:
@@ -674,71 +667,68 @@ class RecordSummaryView(APIView):
         company_info = get_include_header(request)
 
         # rows
-        rows = ReportRecordSerializer(
-            qs.select_related("customer", "service"), many=True
-        ).data
+        rows = ReportRecordSerializer(qs, many=True).data
 
         if separate:
 
-            record_totals = list(
-                qs.values("customer__pk", "customer__name").annotate(
-                    count=Count("pk"),
-                    total_amount=Sum("_amount"),
-                    total_discount=Sum("discount"),
-                    total_paid=Sum("_paid"),
-                    total_due=Sum("_due"),
-                )
-            )
-
-            service_totals = list(
-                qs.values(
-                    "customer__pk", "customer__name", "service__pk", "service__name"
-                ).annotate(
-                    total_pcs=Sum("pcs"),
-                    total_service_amount=Sum("_amount"),
-                    total_service_discount=Sum("discount"),
-                    total_service_paid=Sum("_paid"),
-                    total_service_due=Sum("_due"),
-                )
-            )
-
-            customers = {}
-
-            for t in record_totals:
-                cid = t["customer__pk"]
-
-                customers[cid] = {
-                    "customer_id": cid,
-                    "customer_name": t["customer__name"],
+            customers = defaultdict(
+                lambda: {
+                    "customer_pk": 0,
+                    "customer_name": "",
+                    "customer_address": "",
+                    "data": [],
                     "totals": {
-                        "count": t["count"],
-                        "total_amount": t["total_amount"],
-                        "total_discount": t["total_discount"],
-                        "total_paid": t["total_paid"],
-                        "total_due": t["total_due"],
+                        "count": 0,
+                        "total_amount": Decimal("0.00"),
+                        "total_discount": Decimal("0.00"),
+                        "total_paid": Decimal("0.00"),
+                        "total_due": Decimal("0.00"),
                     },
-                    "service_totals": [],
-                    "records": [],
+                    "service_totals": defaultdict(
+                        lambda: {
+                            "service_pk": 0,
+                            "service": "",
+                            "total_pcs": 0,
+                            "total_service_amount": Decimal("0.00"),
+                            "total_service_discount": Decimal("0.00"),
+                            "total_service_paid": Decimal("0.00"),
+                            "total_service_due": Decimal("0.00"),
+                        }
+                    ),
                 }
+            )
 
-            for st in service_totals:
-                cid = st["customer__pk"]
+            for record in rows:
+                c = customers[record["customer_pk"]]
 
-                customers[cid]["service_totals"].append(
-                    {
-                        "service_id": st["service__pk"],
-                        "service_name": st["service__name"],
-                        "total_pcs": st["total_pcs"],
-                        "total_service_amount": st["total_service_amount"],
-                        "total_service_discount": st["total_service_discount"],
-                        "total_service_paid": st["total_service_paid"],
-                        "total_service_due": st["total_service_due"],
-                    }
-                )
+                if not c["customer_pk"]:
+                    c["customer_pk"] = record["customer_pk"]
+                    c["customer_name"] = record["customer_name"]
+                    c["customer_address"] = record["customer_address"]
 
-            for row in rows:
-                cid = row["customer_id"]
-                customers[cid]["records"].append(row)
+                c["data"].append(record)
+
+                # totals
+                totals = c["totals"]
+
+                totals["count"] += 1
+                totals["total_amount"] += Decimal(record["amount"])
+                totals["total_discount"] += Decimal(record["discount"])
+                totals["total_paid"] += Decimal(record["paid_amount"])
+                totals["total_due"] += Decimal(record["due"])
+
+                # service totals
+                st = c["service_totals"][record["service_pk"]]
+
+                if not st["service_pk"]:
+                    st["service_pk"] = record["service_pk"]
+                    st["service"] = record["service"]
+
+                st["total_pcs"] += record["pcs"]
+                st["total_service_amount"] += Decimal(record["amount"])
+                st["total_service_discount"] += Decimal(record["discount"])
+                st["total_service_paid"] += Decimal(record["paid_amount"])
+                st["total_service_due"] += Decimal(record["due"])
 
             return Response(
                 {"header": company_info, "customers": list(customers.values())},
@@ -764,14 +754,14 @@ class RecordSummaryView(APIView):
                 total_due=Sum("_due"),
             )
 
-        return Response(
-            {
-                "header": company_info,
-                "service_totals": service_totals,
-                "records": rows,
-                "totals": record_totals,
-            }
-        )
+            return Response(
+                {
+                    "header": company_info,
+                    "service_totals": service_totals,
+                    "data": rows,
+                    "totals": record_totals,
+                }
+            )
 
 
 class PaymentSummaryView(APIView):
@@ -781,14 +771,36 @@ class PaymentSummaryView(APIView):
 
         separate = request.query_params.get("separate", "false") == "true"
 
-        report_type = request.query_params.get("type", "all")
+        report_type = request.query_params.get("type", "only_payments")
         employee_ids = get_employee_id(request)
         customer_ids = get_customer_ids(request)
         date_from, date_to = get_date_range(request)
 
-        qs = Payment.objects.with_balance().filter(
-            Q(customer__owner=self.request.user)
-            | Q(customer__assigned_to=self.request.user)
+        qs = (
+            Payment.objects.with_balance()
+            .filter(
+                Q(customer__owner=self.request.user)
+                | Q(customer__assigned_to=self.request.user)
+            )
+            .select_related("customer")
+            .prefetch_related(
+                Prefetch(
+                    "allocation_set",
+                    queryset=Allocation.objects.select_related("record__service"),
+                ),
+                Prefetch(
+                    "advance_set",
+                    queryset=Advance.objects.prefetch_related(
+                        Prefetch(
+                            "advanceusage_set",
+                            queryset=AdvanceUsage.objects.select_related(
+                                "record__service"
+                            ),
+                        )
+                    ),
+                ),
+            )
+            .distinct()
         )
 
         if employee_ids is not None:
@@ -805,221 +817,186 @@ class PaymentSummaryView(APIView):
         company_info = get_include_header(request)
 
         # rows
-        if report_type == "by_record":
+        if report_type == "with_records":
+            rows = ReportPaymentSerializer(qs, many=True).data
 
-            payment_pks = list(qs.values_list("pk", flat=True))
-
-            # helper queryset
-            allocation = Allocation.objects.filter(payment__in=payment_pks).values(
-                "payment_id", "record_id", "amount"
-            )
-
-            advanceusage = AdvanceUsage.objects.filter(
-                advance__payment__in=payment_pks
-            ).values(
-                "advance__payment_id",
-                "amount",
-                "record_id",
-            )
-
-            payment_record_amount = {}
-
-            for a in allocation:
-                key = (a["payment_id"], a["record_id"])
-                payment_record_amount[key] = (
-                    payment_record_amount.get(key, Decimal("0")) + a["amount"]
-                )
-
-            for au in advanceusage:
-                key = (au["advance__payment_id"], au["record_id"])
-                payment_record_amount[key] = (
-                    payment_record_amount.get(key, Decimal("0")) + au["amount"]
-                )
-
-            involved_records_id = {
-                record_id for (_, record_id) in payment_record_amount
-            }
-            record_map = {
-                r.pk: r
-                for r in Record.objects.filter(
-                    pk__in=involved_records_id
-                ).select_related("service")
-            }
-
-            payments = {}
-
-            for p in qs.select_related("customer"):
-
-                payments[p.pk] = {
-                    "payment_id": p.pk,
-                    "customer_id": p.customer_id,
-                    "customer_name": p.customer.name,
-                    "customer_address": p.customer.address,
-                    "amount": p.amount,
-                    "used": p._used,
-                    "left": p._left,
-                    "mode": p.mode,
-                    "created_at": p.created_at,
-                    "records": [],
-                }
-
-            for (p_id, r_id), amount in payment_record_amount.items():
-                if p_id not in payments or r_id not in record_map:
-                    continue
-
-                r = record_map[r_id]
-
-                payments[p_id]["records"].append(
-                    {
-                        "record_pk": r.pk,
-                        "date": r.created_at,
-                        "pcs": r.pcs,
-                        "rate": r.rate,
-                        "amount": (r.rate * r.pcs),
-                        "discount": r.discount,
-                        "allocated_amount": amount,
-                    }
-                )
-
-            service_data = {}
-            seen_records_per_service = {}
-
-            for (p_id, r_id), amount in payment_record_amount.items():
-                if r_id not in record_map:
-                    continue
-
-                r = record_map[r_id]
-                s_id = r.service_id
-
-                if s_id not in service_data:
-
-                    service_data[s_id] = {
-                        "service_id": s_id,
-                        "service_name": r.service.name,
+            if not separate:
+                # serivice totals
+                service_totals = defaultdict(
+                    lambda: {
+                        "service": "",
                         "total_pcs": 0,
-                        "total_allocated": Decimal("0"),
+                        "total_used": Decimal("0.00"),
                     }
+                )
 
-                    seen_records_per_service[s_id] = set()
+                for payment in rows:
+                    for record in payment["records"]:
 
-                if r_id not in seen_records_per_service[s_id]:
-                    service_data[s_id]["total_pcs"] += r.pcs
-                    seen_records_per_service[s_id].add(r_id)
+                        st = service_totals[record["service_pk"]]
 
-                service_data[s_id]["total_allocated"] += amount
+                        st["service"] = record["service"]
+                        st["total_pcs"] += record["pcs"]
+                        st["total_used"] += Decimal(record["used"])
 
-            service_totals = list(service_data.values())
+                # Payment total
+                payment_totals = qs.aggregate(
+                    count=Count("pk"),
+                    total_payment=Coalesce(Sum("amount"), Value(Decimal("0.00"))),
+                    cash_count=Count("pk", filter=Q(mode="c")),
+                    online_count=Count("pk", filter=Q(mode="o")),
+                    total_used=Coalesce(Sum("_used"), Value(Decimal("0.00"))),
+                    total_left=Coalesce(Sum("_left"), Value(Decimal("0.00"))),
+                )
 
-            payment_totals = {
-                "count": len(payments),
-                "total_amount": sum(p["amount"] for p in payments.values()),
-                "total_left": sum(p["left"] for p in payments.values()),
-                "cash_count": sum(1 for p in payments.values() if p["mode"] == "c"),
-                "online_count": sum(1 for p in payments.values() if p["mode"] == "o"),
-            }
+                return Response(
+                    {
+                        "header": company_info,
+                        "service_totals": list(service_totals.values()),
+                        "data": rows,
+                        "totals": payment_totals,
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
-            if separate:
-
-                customers = {}
-
-                for p in payments.values():
-                    cid = p["customer_id"]
-
-                    if cid not in customers:
-                        customers[cid] = {
-                            "customer_id": cid,
-                            "customer_name": p["customer_name"],
-                            "customer_address": p["customer_address"],
-                            "service_totals": {},
-                            "_seen_records": {},
-                            "payments": [],
-                            "totals": {
-                                "count": 0,
-                                "total_amount": Decimal("0"),
-                                "total_left": Decimal("0"),
-                                "cash_count": 0,
-                                "online_count": 0,
-                            },
-                        }
-                    c = customers[cid]
-
-                    c[payments].append(p)
-                    c["payments"].append(p)
-                    c["totals"]["count"] += 1
-                    c["totals"]["total_amount"] += p["amount"]
-                    c["totals"]["total_left"] += p["left"]
-                    if p["mode"] == "c":
-                        c["totals"]["cash_count"] += 1
-                    else:
-                        c["totals"]["online_count"] += 1
-
-                for (p_id, r_id), amount in payment_record_amount.items():
-                    if p_id not in payments or r_id not in record_map:
-                        continue
-
-                    cid = payments[p_id]["customer_id"]
-                    r = record_map[r_id]
-                    s_id = r.service_id
-                    c = customers[cid]
-
-                    if s_id not in c[service_totals]:
-                        c["service_totals"][s_id] = {
-                            "service_id": s_id,
-                            "service_name": r.service.name,
-                            "total_pcs": 0,
-                            "total_allocated": Decimal("0"),
-                        }
-                        c["_seen_records"][s_id] = {}
-
-                    if r_id not in c["_seen_records"]["s_id"]:
-                        c["service_totals"][s_id]["total_pcs"] += r.pcs
-                        c["_seen_records"][s_id].add(r_id)
-
-                    c["service_totals"][s_id]["total_allocated"] += amount
-
-                    result = []
-                    for c in customers.values():
-                        result.append(
-                            {
-                                "customer_id": c["customer_id"],
-                                "customer_name": c["customer_name"],
-                                "customer_address": c["customer_address"],
-                                "service_totals": list(c["service_totals"].values()),
-                                "payments": c["payments"],
-                                "totals": c["totals"],
+            else:
+                customers = defaultdict(
+                    lambda: {
+                        "customer_pk": 0,
+                        "customer_name": "",
+                        "customer_address": "",
+                        "service_totals": defaultdict(
+                            lambda: {
+                                "service": "",
+                                "total_pcs": 0,
+                                "total_used": Decimal("0.00"),
                             }
-                        )
+                        ),
+                        "data": [],
+                        "totals": {
+                            "count": 0,
+                            "total_payment": Decimal("0.00"),
+                            "cash_count": 0,
+                            "online_count": 0,
+                            "total_used": Decimal("0.00"),
+                            "total_left": Decimal("0.00"),
+                        },
+                    }
+                )
 
-                    return Response(
-                        {
-                            "header": company_info,
-                            "customers": result,
-                        }
+                for payment in rows:
+                    c = customers[payment["customer_pk"]]
+
+                    # basic info
+                    if not c["customer_pk"]:
+                        c["customer_pk"] = payment["customer_pk"]
+                        c["customer_name"] = payment["customer_name"]
+                        c["customer_address"] = payment["customer_address"]
+
+                    c["data"].append(payment)
+
+                    # totals
+                    totals = c["totals"]
+                    totals["count"] += 1
+
+                    if payment["mode"] == "c":
+                        totals["cash_count"] += 1
+                    elif payment["mode"] == "o":
+                        totals["online_count"] += 1
+
+                    totals["total_payment"] += Decimal(payment["amount"])
+                    totals["total_used"] += Decimal(payment["used"])
+                    totals["total_left"] += Decimal(payment["left"])
+
+                    # service_totals
+                    for record in payment["records"]:
+
+                        st = c["service_totals"][record["service_pk"]]
+
+                        st["service"] = record["service"]
+                        st["total_pcs"] += record["pcs"]
+                        st["total_used"] += Decimal(record["used"])
+
+                for customer in customers.values():
+                    customer["service_totals"] = list(
+                        customer["service_totals"].values()
                     )
 
-                else:
-                    return Response(
-                        {
-                            "header": company_info,
-                            "service_totals": service_totals,
-                            "payments": list(payments.values()),
-                            "totals": payment_totals,
-                        }
-                    )
+                return Response(
+                    {
+                        "header": company_info,
+                        "customers": list(
+                            sorted(customers.values(), key=lambda x: x["customer_name"])
+                        ),
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
-        else:
-            payment_totals = {
-                "count": len(qs),
-                "total_amount": sum(p["amount"] for p in qs.values()),
-                "total_left": sum(p["left"] for p in qs.values()),
-                "cash_count": sum(1 for p in qs.values() if p["mode"] == "c"),
-                "online_count": sum(1 for p in qs.values() if p["mode"] == "o"),
-            }
+        elif report_type == "only_payments":
 
-            return Response(
-                {
-                    "header": company_info,
-                    "payments": qs,
-                    "payment_totals": payment_totals,
-                }
-            )
+            rows = ReportPaymentOnlySerializer(qs, many=True).data
+
+            if not separate:
+
+                payment_totals = qs.aggregate(
+                    count=Count("pk"),
+                    total_payment=Coalesce(Sum("amount"), Value(Decimal("0.00"))),
+                    cash_count=Count("pk", filter=Q(mode="c")),
+                    online_count=Count("pk", filter=Q(mode="o")),
+                    total_used=Coalesce(Sum("_used"), Value(Decimal("0.00"))),
+                    total_left=Coalesce(Sum("_left"), Value(Decimal("0.00"))),
+                )
+
+                return Response(
+                    {"header": company_info, "data": rows, "totals": payment_totals},
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                customers = defaultdict(
+                    lambda: {
+                        "customer_pk": 0,
+                        "customer_name": "",
+                        "customer_address": "",
+                        "data": [],
+                        "totals": {
+                            "count": 0,
+                            "total_amount": Decimal("0"),
+                            "total_used": Decimal("0"),
+                            "total_left": Decimal("0"),
+                            "cash_count": 0,
+                            "online_count": 0,
+                        },
+                    }
+                )
+
+                for payment in rows:
+                    c = customers[payment["customer_pk"]]
+
+                    if not c["customer_pk"]:
+                        c["customer_pk"] = payment["customer_pk"]
+                        c["customer_name"] = payment["customer_name"]
+                        c["customer_address"] = payment["customer_address"]
+
+                    c["data"].append(payment)
+
+                    # totals
+                    totals = c["totals"]
+
+                    totals["count"] += 1
+
+                    totals["cash_count"] += 1 if payment["mode"] == "c" else 0
+                    totals["online_count"] += 1 if payment["mode"] == "o" else 0
+
+                    totals["total_amount"] += Decimal(payment["amount"])
+                    totals["total_used"] += Decimal(payment["used"])
+                    totals["total_left"] += Decimal(payment["left"])
+
+                return Response(
+                    {
+                        "header": company_info,
+                        "customers": list(
+                            sorted(customers.values(), key=lambda x: x["customer_name"])
+                        ),
+                    },
+                    status=status.HTTP_200_OK,
+                )

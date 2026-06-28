@@ -291,17 +291,26 @@ class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
 class PaymentNestedRecordSerializer(serializers.ModelSerializer):
 
     amount = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
+        max_digits=10, decimal_places=2, read_only=True, source="_amount"
     )
+
+    service_pk = serializers.IntegerField(source="service.id", read_only=True)
     service = serializers.CharField(source="service.name", read_only=True)
 
     used = serializers.SerializerMethodField()
 
     class Meta:
         model = Record
-        fields = ("id", "service", "pcs", "rate", "discount", "amount", "used")
+        fields = (
+            "id",
+            "service_pk",
+            "service",
+            "pcs",
+            "rate",
+            "discount",
+            "amount",
+            "used",
+        )
         read_only_fields = fields
 
     def get_used(self, record):
@@ -320,19 +329,21 @@ class ReportRecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_due"
     )
 
-    customer_id = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_pk = serializers.IntegerField(source="customer.pk", read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     customer_address = serializers.CharField(source="customer.address", read_only=True)
 
+    service_pk = serializers.IntegerField(source="service.id", read_only=True)
     service = serializers.CharField(source="service.name", read_only=True)
 
     class Meta:
         model = Record
         fields = (
             "id",
-            "customer_id",
+            "customer_pk",
             "customer_name",
             "customer_address",
+            "service_pk",
             "service",
             "pcs",
             "created_at",
@@ -451,27 +462,9 @@ class CloudInaryImageField(serializers.ImageField):
         return value.url
 
 
-# Read
-class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
-    customer = NestedCustomerSerializer(read_only=True)
-    image = CloudInaryImageField(read_only=True)
-    left = serializers.DecimalField(
-        max_digits=10, decimal_places=2, source="_left", read_only=True
-    )
+# Base Read
+class BasePaymentSerializer(serializers.ModelSerializer):
     records = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Payment
-        fields = (
-            "id",
-            "customer",
-            "mode",
-            "amount",
-            "left",
-            "image",
-            "created_at",
-            "records",
-        )
 
     def get_records(self, payment):
         combined_allocated = defaultdict(Decimal)
@@ -492,11 +485,87 @@ class ReadOnlyPaymentSerializer(serializers.ModelSerializer):
             context={**self.context, "allocated_money_map": dict(combined_allocated)},
         ).data
 
-
-class NestedPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
-        fields = ("id", "mode", "amount", "image", "created_at")
+
+
+# Read
+class ReadOnlyPaymentSerializer(BasePaymentSerializer):
+    customer = NestedCustomerSerializer(read_only=True)
+    image = CloudInaryImageField(read_only=True)
+    left = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_left", read_only=True
+    )
+
+    class Meta(BasePaymentSerializer.Meta):
+        model = Payment
+        fields = (
+            "id",
+            "customer",
+            "mode",
+            "amount",
+            "left",
+            "image",
+            "created_at",
+            "records",
+        )
+        read_only_fields = fields
+
+
+class ReportPaymentSerializer(BasePaymentSerializer):
+    customer_pk = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_name = serializers.CharField(source="customer.name", read_only=True)
+    customer_address = serializers.CharField(source="customer.address", read_only=True)
+
+    used = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_used", read_only=True
+    )
+    left = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_left", read_only=True
+    )
+
+    class Meta(BasePaymentSerializer.Meta):
+        model = Payment
+        fields = (
+            "customer_pk",
+            "customer_name",
+            "customer_address",
+            "id",
+            "mode",
+            "amount",
+            "created_at",
+            "used",
+            "left",
+            "records",
+        )
+        read_only_fields = fields
+
+
+class ReportPaymentOnlySerializer(serializers.ModelSerializer):
+    customer_pk = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_name = serializers.CharField(source="customer.name", read_only=True)
+    customer_address = serializers.CharField(source="customer.address", read_only=True)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    used = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_used", read_only=True
+    )
+    left = serializers.DecimalField(
+        max_digits=10, decimal_places=2, source="_left", read_only=True
+    )
+
+    class Meta:
+        model = Payment
+        fields = (
+            "customer_pk",
+            "customer_name",
+            "customer_address",
+            "id",
+            "mode",
+            "amount",
+            "created_at",
+            "used",
+            "left",
+        )
         read_only_fields = fields
 
 
@@ -676,58 +745,3 @@ class WriteRequestSerializer(serializers.ModelSerializer):
             )
 
         return fields
-
-
-"""
-# need to think about
-
-
-class NestedRecordSerializer(serializers.ModelSerializer):
-
-    amount = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-    service = serializers.CharField(source="service.name", read_only=True)
-
-    class Meta:
-        model = Record
-        fields = ("id", "service", "pcs", "rate", "discount", "amount")
-        read_only_fields = fields
-
-
-# Advance Usage nested serializer
-class NestedAdvanceUsageSerializer(serializers.ModelSerializer):
-    record = NestedRecordSerializer()
-
-    class Meta:
-        model = AdvanceUsage
-        fields = ["record", "amount", "created_at"]
-
-
-
-class ReadOnlyAdvanceLogSerializer(serializers.ModelSerializer):
-    customer = NestedCustomerSerializer(read_only=True)
-    # advance created
-    payment = NestedPaymentSerializer(read_only=True)
-    total_amount = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        read_only=True,
-    )
-    left = serializers.DecimalField(
-        max_digits=10, decimal_places=2, source="_left", read_only=True
-    )
-
-    # advance used
-    usage = NestedAdvanceUsageSerializer(
-        many=True, read_only=True, source="advanceusage_set"
-    )
-
-    class Meta:
-        model = Advance
-        fields = ["customer", "payment", "total_amount", "created_at", "usage", "left"]
-
-
-"""
