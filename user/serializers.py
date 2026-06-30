@@ -27,14 +27,12 @@ class ProfileSerializer(serializers.ModelSerializer):
             "setting_mode",
             "setting_reason",
         )
-    
+
     def validate(self, attrs):
         user = self.context["request"].user
         if user.parent:
             raise ValidationError("Employee cannot create profile.")
         return attrs
-
-        
 
 
 class CustomCookieOnlyJwtSerializer(JWTSerializer):
@@ -148,6 +146,14 @@ class UserSerializer(UserDetailsSerializer):
             "profile",
         )
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        if instance.parent is not None:
+            data.pop("profile", None)
+
+        return data
+
     def validate_username(self, value):
         qs = User.objects.filter(username=value)
         if self.instance:
@@ -255,11 +261,9 @@ class EmployeeSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     re_password = serializers.CharField(write_only=True)
 
-
     customer = NestedCustomerSerializer(
         read_only=True, many=True, source="customer_set"
     )
-
 
     class Meta:
         model = Employee
@@ -315,6 +319,7 @@ class Sync_Employee(serializers.Serializer):
             self.fields["customer"].queryset = Customer.objects.filter(owner=user)
         else:
             self.fields["customer"].queryset = Customer.objects.none()
+
 
 class ReadOnlyEmployeeSerializer(serializers.ModelSerializer):
 

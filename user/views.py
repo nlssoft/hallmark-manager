@@ -2,7 +2,7 @@ from django.db import transaction
 from django.utils import timezone
 from dj_rest_auth.registration.views import RegisterView
 from rest_framework import generics, status
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.mixins import (
@@ -41,7 +41,6 @@ from .Services.throttles import OTPCooldownThrottling
 from dj_rest_auth.jwt_auth import get_refresh_view
 from dj_rest_auth.views import UserDetailsView
 from rest_framework.decorators import action
-
 
 BaseRefreshView = get_refresh_view()
 
@@ -239,12 +238,18 @@ class EmployeeView(
     def get_queryset(self):
         user = getattr(self.request, "user", None)
 
-        if getattr(self, "swagger_fake_view", False) or not user or not user.is_authenticated:
+        if (
+            getattr(self, "swagger_fake_view", False)
+            or not user
+            or not user.is_authenticated
+        ):
             return Employee.objects.none()
 
-        return Employee.objects.filter(parent=user).prefetch_related(
-            "customer_set"
-        ).order_by("id")
+        return (
+            Employee.objects.filter(parent=user)
+            .prefetch_related("customer_set")
+            .order_by("id")
+        )
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -304,8 +309,7 @@ class EmployeeView(
 
         existing = set(
             through.objects.filter(
-                user_id=employee.id,
-                customer_id__in=new_id
+                user_id=employee.id, customer_id__in=new_id
             ).values_list("customer_id", flat=True)
         )
 
@@ -316,6 +320,5 @@ class EmployeeView(
             ],
             ignore_conflicts=True,
         )
-
 
         return Response({"synced": len(new_id)})
