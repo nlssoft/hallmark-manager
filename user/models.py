@@ -126,3 +126,12 @@ class UserSubscription(models.Model):
             return "silver"
 
         return self.subscription_plan.tier if self.subscription_plan else None
+
+
+class RazorpayEvent(models.Model):
+    event_id = models.CharField(max_length=255, unique=True)
+    event_type = models.CharField(max_length=255)
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-processed_at"]
