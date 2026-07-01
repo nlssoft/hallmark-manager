@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sites",
-    'django_extensions',
+    "django_extensions",
     # cloudinary
     "cloudinary_storage",
     "cloudinary",
@@ -280,3 +280,8 @@ ANYMAIL = {
     "RESEND_API_KEY": env("EMAIL_API_KEY"),
 }
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
+
+
+# razorpay settings
+RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET")

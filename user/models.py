@@ -68,3 +68,61 @@ class UserOTP(models.Model):
 
     def __str__(self):
         return f"{self.user.email} — {self.task}"
+
+
+class SubscriptionPlan(models.Model):
+    Tier_Choices = [("s", "Silver"), ("g", "Gold")]
+    Period_Choices = [("m", "Monthly"), ("sa", "Semi-Annually"), ("a", "Annually")]
+
+    tier = models.CharField(max_length=1, choices=Tier_Choices)
+    period = models.CharField(max_length=2, choices=Period_Choices)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    razorpay_plan_id = models.CharField(max_length=255, unique=True)
+    max_employees = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-pk"]
+
+
+class UserSubscription(models.Model):
+    status_choices = [
+        ("trial", "Trial"),
+        ("active", "Active"),
+        ("expired", "Expired"),
+        ("canceled", "Canceled"),
+    ]
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    subscription_plan = models.ForeignKey(
+        SubscriptionPlan, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    razorpay_subscription_id = models.CharField(
+        max_length=255, unique=True, null=True, blank=True
+    )
+    status = models.CharField(max_length=10, choices=status_choices, default="trial")
+    trial_end = models.DateTimeField()
+    current_period_start = models.DateTimeField(null=True, blank=True)
+    current_period_end = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-pk"]
+
+    @property
+    def is_active(self):
+        now = timezone.now()
+        if self.status == "trial":
+            return now <= self.trial_end
+
+        return (
+            self.status == "active"
+            and self.current_period_end
+            and self.current_period_end >= now
+        )
+
+    @property
+    def tier(self):
+        if self.status == "trial":
+            return "silver"
+
+        return self.subscription_plan.tier if self.subscription_plan else None

@@ -19,5 +19,6 @@ dependencies = [
     "drf-spectacular>=0.29.0",
     "pillow>=12.2.0",
     "psycopg2-binary>=2.9.12",
+    "razorpay>=2.0.1",
     "resend>=2.30.1",
 ]
