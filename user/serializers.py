@@ -1,5 +1,5 @@
 # cls
-from .models import User, Employee, Profile, UserOTP
+from .models import User, Employee, Profile, UserOTP, SubscriptionPlan, UserSubscription
 from core.models import Customer
 from core.nestedserializer import NestedCustomerSerializer
 
@@ -134,10 +134,34 @@ class VerifyEmailOTPSerializer(serializers.Serializer):
         return attrs
 
 
+class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    tier = serializers.CharField(source="get_tier_display", read_only=True)
+    period = serializers.CharField(source="get_period_display", read_only=True)
+
+    class Meta:
+        model = SubscriptionPlan
+        fields = ["tier", "period", "price", "max_employees"]
+        read_only_fields = fields
+
+
+class UserSubscriptionSerializer(serializers.ModelSerializer):
+    status = serializers.CharField(source="get_status_display", read_only=True)
+    subscription_plan = SubscriptionPlanSerializer()
+
+    class Meta:
+        model = UserSubscription
+        fields = [
+            "status",
+            "subscription_plan",
+            "current_period_end",
+        ]
+        read_only_fields = fields
+
+
 class UserSerializer(UserDetailsSerializer):
     profile = ProfileSerializer(required=False, allow_null=True)
     email = serializers.EmailField(required=True)
-    plan= serializers.SerializerMethodField()
+    subscription = UserSubscriptionSerializer(read_only=True)
 
     class Meta(UserDetailsSerializer.Meta):
         fields = (
@@ -145,13 +169,15 @@ class UserSerializer(UserDetailsSerializer):
             "username",
             "email",
             "profile",
+            "subscription",
         )
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
 
-        if instance.parent is not None:
+        if instance.parent_id is not None:
             data.pop("profile", None)
+            data.pop("subscription", None)
 
         return data
 
@@ -184,32 +210,22 @@ class UserSerializer(UserDetailsSerializer):
             instance.email_verified = False
             instance.save()
 
-            if profile_data is None:
-                return instance
-
-            profile = instance.profile
-            for attr, value in profile_data.items():
-                setattr(profile, attr, value)
-
-            profile.save()
-
-            return instance
         else:
             instance.username = validated_data.get("username", instance.username)
             instance.email = validated_data.get("email", instance.email)
 
             instance.save()
 
-            if profile_data is None:
-                return instance
-
-            profile = instance.profile
-            for attr, value in profile_data.items():
-                setattr(profile, attr, value)
-
-            profile.save()
-
+        if profile_data is None:
             return instance
+
+        profile = instance.profile
+        for attr, value in profile_data.items():
+            setattr(profile, attr, value)
+
+        profile.save()
+
+        return instance
 
 
 class ChangeEmailOTPSerializer(serializers.Serializer):

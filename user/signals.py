@@ -1,12 +1,11 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth import get_user_model
-from .models import Profile, UserSubscription
+from .models import UserSubscription
 from django.utils import timezone
 from datetime import timedelta
 
 user = get_user_model()
-
 
 
 @receiver(post_save, sender=user)

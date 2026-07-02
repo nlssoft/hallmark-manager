@@ -137,6 +137,11 @@ class ResendVerifyEmailOTPView(APIView):
 
 class CustomUserDetailView(UserDetailsView):
 
+    def get_object(self):
+        return User.objects.select_related(
+            "profile", "subscription__subscription_plan"
+        ).get(pk=self.request.user.pk)
+
     def update(self, request, *args, **kwargs):
         with transaction.atomic():
             partial = kwargs.pop("partial", False)
