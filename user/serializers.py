@@ -74,7 +74,7 @@ class CustomRegisterSerializer(RegisterSerializer):
 
             Profile.objects.create(
                 owner=user,
-                number=self.validated_data["number"],  # required, safe
+                number=self.validated_data.get("number", ""),
                 company_name=self.validated_data.get("company_name", ""),
                 company_address=self.validated_data.get("company_address", ""),
                 office_number1=self.validated_data.get("office_number1", ""),
@@ -137,6 +137,7 @@ class VerifyEmailOTPSerializer(serializers.Serializer):
 class UserSerializer(UserDetailsSerializer):
     profile = ProfileSerializer(required=False, allow_null=True)
     email = serializers.EmailField(required=True)
+    plan= serializers.SerializerMethodField()
 
     class Meta(UserDetailsSerializer.Meta):
         fields = (

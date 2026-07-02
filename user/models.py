@@ -92,7 +92,7 @@ class UserSubscription(models.Model):
         ("canceled", "Canceled"),
     ]
 
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, related_name="subscription", on_delete=models.CASCADE)
     subscription_plan = models.ForeignKey(
         SubscriptionPlan, on_delete=models.SET_NULL, null=True, blank=True
     )
@@ -100,6 +100,7 @@ class UserSubscription(models.Model):
         max_length=255, unique=True, null=True, blank=True
     )
     status = models.CharField(max_length=10, choices=status_choices, default="trial")
+    razorpay_status = models.CharField(max_length=50, null=True, blank=True)
     trial_end = models.DateTimeField()
     current_period_start = models.DateTimeField(null=True, blank=True)
     current_period_end = models.DateTimeField(null=True, blank=True)
@@ -108,22 +109,26 @@ class UserSubscription(models.Model):
     class Meta:
         ordering = ["-pk"]
 
+
     @property
     def is_active(self):
+        """
+        we do not check for status since even if subscription is canceled, 
+        it can still be active until the end of the current period
+        """
         now = timezone.now()
         if self.status == "trial":
             return now <= self.trial_end
 
         return (
-            self.status == "active"
-            and self.current_period_end
+            self.current_period_end
             and self.current_period_end >= now
         )
 
     @property
     def tier(self):
         if self.status == "trial":
-            return "silver"
+            return "s"
 
         return self.subscription_plan.tier if self.subscription_plan else None
 
@@ -132,6 +137,17 @@ class RazorpayEvent(models.Model):
     event_id = models.CharField(max_length=255, unique=True)
     event_type = models.CharField(max_length=255)
     processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-processed_at"]
+
+
+class UserSubscriptionHistory(models.Model):
+    user_subscription= models.ForeignKey(UserSubscription, related_name="payments", on_delete=models.CASCADE)
+    razorpay_payment_id = models.CharField(max_length=255, unique=True)
+    amount= models.DecimalField(max_digits=10, decimal_places=2)
+    processed_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=30)
 
     class Meta:
         ordering = ["-processed_at"]
