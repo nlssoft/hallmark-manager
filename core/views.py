@@ -104,7 +104,13 @@ class GroupsViewset(ModelViewSet):
         return (
             Groups.objects.filter(owner=user)
             .select_related("owner")
-            .prefetch_related("grouprate_set", "grouprate_set__service", "customer_set")
+            .prefetch_related(
+                Prefetch(
+                    "grouprate_set",
+                    queryset=GroupRate.objects.select_related("service"),
+                ),
+                "customer_set",
+            )
             .order_by("-pk")
             .distinct()
         )
@@ -177,67 +183,19 @@ class CustomerViewset(ModelViewSet):
         ):
             return Customer.objects.none()
 
-        record_total = (
-            Record.objects.filter(customer_id=OuterRef("pk"))
-            .values("customer_id")
-            .annotate(
-                total=Coalesce(
-                    Sum(
-                        ExpressionWrapper(
-                            F("rate") * F("pcs")
-                            - Coalesce(
-                                F("discount"), Value(0), output_field=DecimalField()
-                            ),
-                            output_field=DecimalField(),
-                        )
-                    ),
-                    Value(0),
-                    output_field=DecimalField(),
-                )
-            )
-            .values("total")
-        )
-
-        payment_total = (
-            Payment.objects.filter(customer_id=OuterRef("pk"))
-            .values("customer_id")
-            .annotate(
-                total=Coalesce(Sum("amount"), Value(0), output_field=DecimalField())
-            )
-            .values("total")
-        )
-
         return (
-            Customer.objects.filter(Q(owner=user) | Q(assigned_to=user))
-            .annotate(
-                _record_total=Coalesce(
-                    Subquery(record_total, output_field=DecimalField()),
-                    Value(0),
-                    output_field=DecimalField(),
-                ),
-                _payment_total=Coalesce(
-                    Subquery(payment_total, output_field=DecimalField()),
-                    Value(0),
-                    output_field=DecimalField(),
-                ),
-            )
-            .annotate(_balance=F("_record_total") - F("_payment_total"))
-            .annotate(
-                _due=Case(
-                    When(_balance__gt=0, then=F("_balance")),
-                    default=Value(0),
-                    output_field=DecimalField(),
-                ),
-                _surplus=Case(
-                    When(_balance__lt=0, then=-F("_balance")),
-                    default=Value(0),
-                    output_field=DecimalField(),
-                ),
-            )
+            Customer.objects.with_totals()
+            .filter(Q(owner=user) | Q(assigned_to=user))
             .select_related(
                 "group",
             )
-            .prefetch_related("assigned_to", "group__grouprate_set__service")
+            .prefetch_related(
+                "assigned_to",
+                Prefetch(
+                    "group__grouprate_set",
+                    queryset=GroupRate.objects.select_related("service"),
+                ),
+            )
             .order_by("-pk")
         )
 
@@ -270,7 +228,7 @@ class ServiceViewset(ModelViewSet):
         ):
             return Service.objects.none()
 
-        return Service.objects.filter(owner=user).select_related("owner")
+        return Service.objects.filter(owner=user)
 
 
 class RecordViewset(ModelViewSet):
@@ -431,15 +389,8 @@ class PaymentViewset(ModelViewSet):
                     queryset=Allocation.objects.select_related("record__service"),
                 ),
                 Prefetch(
-                    "advance_set",
-                    queryset=Advance.objects.prefetch_related(
-                        Prefetch(
-                            "advanceusage_set",
-                            queryset=AdvanceUsage.objects.select_related(
-                                "record__service"
-                            ),
-                        )
-                    ),
+                    "advance_set__advanceusage_set",
+                    queryset=AdvanceUsage.objects.select_related("record__service"),
                 ),
             )
             .order_by("-created_at", "-pk")
@@ -545,35 +496,15 @@ class RequestViewset(ModelViewSet):
         ):
             return Request.objects.none()
 
-        record_qs = (
-            Record.objects.select_related("customer", "service")
-            .annotate(
-                _amount=ExpressionWrapper(
-                    F("rate") * F("pcs"), output_field=DecimalField()
-                )
-            )
-            .annotate(
-                _paid=Coalesce(
-                    Sum("allocation__amount"), Value(0), output_field=DecimalField()
-                )
-                + Coalesce(
-                    Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
-                )
-            )
-            .annotate(
-                _due=F("_amount")
-                - F("_paid")
-                - Coalesce(F("discount"), Value(0), output_field=DecimalField())
-            )
-        )
-
         return (
             Request.objects.filter(Q(owner__parent=user) | Q(owner=user))
             .prefetch_related(
-                Prefetch("record", queryset=record_qs),
-                "record",
-                "record__customer",
-                "record__service",
+                Prefetch(
+                    "record",
+                    queryset=Record.objects.with_financials().select_related(
+                        "customer", "service"
+                    ),
+                ),
             )
             .order_by("-created_at", "-pk")
         )
@@ -789,15 +720,8 @@ class PaymentSummaryView(APIView):
                     queryset=Allocation.objects.select_related("record__service"),
                 ),
                 Prefetch(
-                    "advance_set",
-                    queryset=Advance.objects.prefetch_related(
-                        Prefetch(
-                            "advanceusage_set",
-                            queryset=AdvanceUsage.objects.select_related(
-                                "record__service"
-                            ),
-                        )
-                    ),
+                    "advance_set__advanceusage_set",
+                    queryset=AdvanceUsage.objects.select_related("record__service"),
                 ),
             )
             .distinct()

@@ -14,6 +14,71 @@ from django.db.models.functions import Coalesce
 from django.apps import apps
 
 
+class CustomerQuerySet(QuerySet):
+
+    def with_totals(self):
+        Record = apps.get_model("core", "Record")
+        Payment = apps.get_model("core", "Payment")
+
+        record_total = (
+            Record.objects.filter(customer_id=OuterRef("pk"))
+            .values("customer_id")
+            .annotate(
+                total=Coalesce(
+                    Sum(
+                        ExpressionWrapper(
+                            F("rate") * F("pcs")
+                            - Coalesce(
+                                F("discount"), Value(0), output_field=DecimalField()
+                            ),
+                            output_field=DecimalField(),
+                        )
+                    ),
+                    Value(0),
+                    output_field=DecimalField(),
+                )
+            )
+            .values("total")
+        )
+
+        payment_total = (
+            Payment.objects.filter(customer_id=OuterRef("pk"))
+            .values("customer_id")
+            .annotate(
+                total=Coalesce(Sum("amount"), Value(0), output_field=DecimalField())
+            )
+            .values("total")
+        )
+
+        return (
+            self.annotate(
+                _record_total=Coalesce(
+                    Subquery(record_total, output_field=DecimalField()),
+                    Value(0),
+                    output_field=DecimalField(),
+                ),
+                _payment_total=Coalesce(
+                    Subquery(payment_total, output_field=DecimalField()),
+                    Value(0),
+                    output_field=DecimalField(),
+                ),
+            )
+            .annotate(_balance=F("_record_total") - F("_payment_total"))
+            .annotate(
+                _due=Case(
+                    When(_balance__gt=0, then=F("_balance")),
+                    default=Value(0),
+                    output_field=DecimalField(),
+                ),
+                _surplus=Case(
+                    When(_balance__lt=0, then=-F("_balance")),
+                    default=Value(0),
+                    output_field=DecimalField(),
+                ),
+            )
+        )
+
+
 class RecordQuerySet(QuerySet):
 
     def with_financials(self):

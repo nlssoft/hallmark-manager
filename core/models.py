@@ -6,8 +6,12 @@ from django.core.exceptions import ValidationError
 from django.db.models import Sum, Value, DecimalField, ExpressionWrapper, F
 from django.db.models.functions import Coalesce
 from django.core.validators import MinValueValidator
-from .querysets import RecordQuerySet, PaymentQuerySet, AdvanceQuerySet
-
+from .querysets import (
+    RecordQuerySet,
+    PaymentQuerySet,
+    AdvanceQuerySet,
+    CustomerQuerySet,
+)
 
 user = get_user_model()
 
@@ -28,6 +32,9 @@ class Groups(models.Model):
 
 
 class Customer(models.Model):
+
+    objects = CustomerQuerySet.as_manager()
+
     owner = models.ForeignKey(
         user, on_delete=models.CASCADE, related_name="owned_parties"
     )

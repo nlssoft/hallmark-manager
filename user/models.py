@@ -83,6 +83,9 @@ class SubscriptionPlan(models.Model):
     class Meta:
         ordering = ["-pk"]
 
+    def __str__(self) -> str:
+        return f"Tier: {self.tier} Period: {self.period}, Price: {self.price}"
+
 
 class UserSubscription(models.Model):
     status_choices = [
@@ -92,7 +95,9 @@ class UserSubscription(models.Model):
         ("canceled", "Canceled"),
     ]
 
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, related_name="subscription", on_delete=models.CASCADE)
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, related_name="subscription", on_delete=models.CASCADE
+    )
     subscription_plan = models.ForeignKey(
         SubscriptionPlan, on_delete=models.SET_NULL, null=True, blank=True
     )
@@ -109,21 +114,17 @@ class UserSubscription(models.Model):
     class Meta:
         ordering = ["-pk"]
 
-
     @property
     def is_active(self):
         """
-        we do not check for status since even if subscription is canceled, 
+        we do not check for status since even if subscription is canceled,
         it can still be active until the end of the current period
         """
         now = timezone.now()
         if self.status == "trial":
             return now <= self.trial_end
 
-        return (
-            self.current_period_end
-            and self.current_period_end >= now
-        )
+        return self.current_period_end and self.current_period_end >= now
 
     @property
     def tier(self):
@@ -143,9 +144,11 @@ class RazorpayEvent(models.Model):
 
 
 class UserSubscriptionHistory(models.Model):
-    user_subscription= models.ForeignKey(UserSubscription, related_name="payments", on_delete=models.CASCADE)
+    user_subscription = models.ForeignKey(
+        UserSubscription, related_name="payments", on_delete=models.CASCADE
+    )
     razorpay_payment_id = models.CharField(max_length=255, unique=True)
-    amount= models.DecimalField(max_digits=10, decimal_places=2)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
     processed_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=30)
 

@@ -684,6 +684,9 @@ class ReadOnlyRequestSerializer(serializers.ModelSerializer):
 
 # Write
 class WriteRequestSerializer(serializers.ModelSerializer):
+    record = serializers.ListField(
+        child=serializers.IntegerField(), write_only=True, allow_empty=False
+    )
 
     class Meta:
         model = Request
@@ -691,57 +694,53 @@ class WriteRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
     # here records are just a convinet name for value
-    def validate_record(self, records):
+    def validate_record(self, ids):
+        if not ids:
+            raise ValidationError("Select at least one record.")
 
+        if len(ids) != len(set(ids)):
+            raise ValidationError("Duplicate records are not allowed.")
+
+        return ids
+
+    def validate(self, attrs):
         user = self.context["request"].user
+        ids = attrs["record"]
 
-        pending = (
-            Request.objects.filter(
-                status="p",
-                owner=user,
-                record__in=records,
-            )
-            .values_list("record", flat=True)
-            .distinct()
+        pending = Request.objects.filter(
+            status="p",
+            owner=user,
+            record__isnull=False,
         )
 
         # on update exclude your own request
         if self.instance:
             pending = pending.exclude(pk=self.instance.pk)
 
-        if pending.exists():
-            raise ValidationError("One or more records already have a pending request.")
+        pending_record_ids = pending.values_list("record", flat=True).distinct()
 
-        if not records:
-            raise ValidationError("Select at least one record.")
-
-        return records
-
-    def get_fields(self):
-        fields = super().get_fields()
-        request = self.context.get("request")
-        user = getattr(request, "user", None)
-
-        if not user or not user.is_authenticated:
-            fields["record"].child_relation.queryset = Record.objects.none()
-            return fields
-
-        pending_record_ids = (
-            Request.objects.filter(status="p", owner=request.user, record__isnull=False)
-            .values_list("record", flat=True)
-            .distinct()
+        records = list(
+            Record.objects.with_financials()
+            .filter(pk__in=ids)
+            .filter(customer__assigned_to=user)
+            .filter(_due__gt=Decimal("0.00"))
+            .exclude(pk__in=pending_record_ids)
+            .select_related("customer", "service")
         )
-        if self.instance:
-            pending_record_ids = pending_record_ids.exclude(pk=self.instance.pk)
 
-        if user.parent_id is not None:
-            fields["record"].child_relation.queryset = (
-                Record.objects.with_financials()
-                .filter(customer__assigned_to=request.user)
-                .select_related("customer", "service")
-                .prefetch_related("advanceusage_set", "allocation_set")
-                .filter(_due__gt=0)
-                .exclude(pk__in=pending_record_ids)
-            )
+        if len(records) != len(set(ids)):
+            raise ValidationError("One or more records are invalid or unavailable.")
 
-        return fields
+        self._records = records
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop("record")
+        request_obj = Request.objects.create(**validated_data)
+        request_obj.record.set(self._records)
+        return request_obj
+
+    def update(self, instance, validated_data):
+        validated_data.pop("record", None)
+        instance.record.set(self._records)
+        return instance

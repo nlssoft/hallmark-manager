@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.db.models.query import QuerySet
-from django.forms.models import ModelForm
 from django.http import HttpRequest
+from django.utils.html import format_html, format_html_join
+from django.utils.safestring import mark_safe
 from .models import (
     Groups,
     Customer,
@@ -9,43 +10,46 @@ from .models import (
     GroupRate,
     Record,
     Payment,
-    Allocation,
-    Advance,
-    AdvanceUsage,
     AuditLog,
-    Request,
 )
 
 from .custome_views import ReadOnlyModelAdmin
-from .form import RecordAdminForm, PaymentAdminForm
-from .json_serializer import serializer_inst
-from .money_logic import PaymentService
 
-from django.db import transaction
-from django.db.models import Sum, DecimalField, Value
+from django.db.models import (
+    Sum,
+    DecimalField,
+    Value,
+    Q,
+    OuterRef,
+    ExpressionWrapper,
+    F,
+    Subquery,
+    Case,
+    When,
+)
 from django.db.models.functions import Coalesce
-
-
-@admin.register(Groups)
-class GroupAdmin(admin.ModelAdmin):
-    list_display = [
-        "owner",
-        "name",
-        "description",
-    ]
-
-    search_fields = [
-        "owner__username",
-        "name",
-        "description",
-    ]
 
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
 
+    @admin.display(description="Due", ordering="_due")
+    def get_due(self, obj):
+        return obj._due
+
+    @admin.display(description="Surplus", ordering="_surplus")
+    def get_surplus(self, obj):
+        return obj._surplus
+
+    @admin.display(description="Customers")
     def get_assigned_to(self, obj):
-        return ", ".join(str(e) for e in obj.assigned_to.all())
+        employee = obj.assigned_to.all()
+        if not employee:
+            return "—"
+        rows = format_html_join(
+            mark_safe(""), "<li>{}</li>", ((e.username,) for e in employee)
+        )
+        return format_html('<ul style="margin:0; padding-left:1.1em;">{}</ul>', rows)
 
     list_display = [
         "owner",
@@ -56,8 +60,8 @@ class CustomerAdmin(admin.ModelAdmin):
         "address",
         "get_assigned_to",
         "group",
-        "due",
-        "surplus",
+        "get_due",
+        "get_surplus",
     ]
     search_fields = [
         "owner__username",
@@ -66,14 +70,23 @@ class CustomerAdmin(admin.ModelAdmin):
     ]
 
     def get_queryset(self, request: HttpRequest) -> QuerySet:
-        if request.user.is_superuser:
-            return Customer.objects.all()
+        user = request.user
 
-        if request.user.parent:
-            return Customer.objects.filter(assigned_to=request.user)
-        return Customer.objects.filter(owner=request.user)
+        if user.is_superuser:
+            base = Customer.objects.with_totals().all()
+        else:
+            base = Customer.objects.with_totals().filter(
+                Q(owner=user) | Q(assigned_to=user)
+            )
 
-    get_assigned_to.short_description = "Assigned To"
+        return (
+            base.select_related(
+                "group",
+                "owner",
+            )
+            .prefetch_related("assigned_to")
+            .order_by("-pk")
+        )
 
 
 @admin.register(Service)
@@ -90,11 +103,27 @@ class ServiceAdmin(admin.ModelAdmin):
 
 @admin.register(GroupRate)
 class GroupRateAdmin(admin.ModelAdmin):
+
+    @admin.display(description="Customers")
+    def get_customers(self, obj):
+        names = list(obj.group.customer_set.values_list("name", flat=True))
+        if not names:
+            return "—"
+        if len(names) > 3:
+            return f"{', '.join(names[:3])} +{len(names)-3} more"
+        return ", ".join(names)
+
+    @admin.display(description="owner")
+    def get_owner(self, obj):
+        return obj.group.owner
+
     list_display = [
+        "get_owner",
         "group__name",
         "group__description",
         "service",
         "rate",
+        "get_customers",
     ]
 
     search_fields = ["group__name"]
@@ -104,217 +133,8 @@ class GroupRateAdmin(admin.ModelAdmin):
         "rate",
     ]
 
-
-@admin.register(Record)
-class RecordAdmin(admin.ModelAdmin):
-    form = RecordAdminForm
-
     def get_queryset(self, request):
-        return (
-            super()
-            .get_queryset(request)
-            .annotate(
-                _paid=(
-                    Coalesce(
-                        Sum("allocation__amount"),
-                        Value(0),
-                        output_field=DecimalField(),
-                    )
-                    + Coalesce(
-                        Sum("advanceusage__amount"),
-                        Value(0),
-                        output_field=DecimalField(),
-                    )
-                )
-            )
-            .select_related("customer", "service")
-        )
-
-    # derived methods
-    def get_amount(self, obj):
-        return obj.amount
-
-    def get_paid(self, obj):
-        return obj._paid
-
-    def get_due(self, obj):
-        return obj.amount - ((obj._paid or 0) + (obj.discount or 0))
-
-    # methods
-
-    def save_model(self, request, obj, form, change):
-        before_obj = Record.objects.get(pk=obj.pk)
-        before = serializer_inst(before_obj)
-        super().save_model(request, obj, form, change)
-        if not change:
-            PaymentService.advance_allocate(obj)
-        else:
-            affected_payments = list(
-                Payment.objects.filter(allocation__record=obj).distinct()
-            )
-            AdvanceUsage.objects.filter(record=obj).delete()
-            for payment in affected_payments:
-                PaymentService.rollback_plus_allocate(payment)
-
-            PaymentService.advance_allocate(obj)
-            after = serializer_inst(obj)
-            reason = form.cleaned_data.get("reason")
-            AuditLog.objects.create(
-                user=obj.customer.owner,
-                before=before,
-                after=after,
-                model="r",
-                action="u",
-                reason=reason,
-            )
-
-    def delete_model(self, request: HttpRequest, obj: any) -> None:
-        with transaction.atomic():
-            affected_payments = list(
-                Payment.objects.filter(allocation__record=obj).distinct()
-            )
-            obj.delete()
-
-            for payment in affected_payments:
-                PaymentService.rollback_plus_allocate(payment)
-
-    def delete_queryset(self, request, queryset):
-        with transaction.atomic():
-            affected_payments = list(
-                Payment.objects.filter(allocation__record__in=queryset).distinct()
-            )
-            queryset.delete()
-
-            for payment in affected_payments:
-                PaymentService.rollback_plus_allocate(payment)
-
-    list_display = [
-        "customer__name",
-        "customer__address",
-        "service",
-        "pcs",
-        "rate",
-        "created_at",
-        "get_amount",
-        "discount",
-        "get_paid",
-        "get_due",
-    ]
-
-    search_fields = [
-        "customer__logo",
-        "customer__name",
-    ]
-
-    list_filter = [
-        "created_at",
-    ]
-
-    get_amount.short_description = "Amount"
-    get_paid.short_description = "Paid Amount"
-    get_due.short_description = "Due"
-
-
-@admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
-    form = PaymentAdminForm
-
-    list_display = [
-        "customer__name",
-        "customer__address",
-        "amount",
-        "created_at",
-        "mode",
-        "image",
-    ]
-
-    search_fields = [
-        "customer__logo",
-        "customer__name",
-    ]
-
-    list_filter = [
-        "created_at",
-        "mode",
-    ]
-
-    # methods
-    def save_model(
-        self, request: HttpRequest, obj: any, form: ModelForm, change: bool
-    ) -> None:
-        with transaction.atomic():
-            if change:
-                PaymentService.rollback(obj)
-                before_obj = Payment.objects.get(pk=obj.pk)
-                before = serializer_inst(before_obj)
-
-                super().save_model(request, obj, form, change)
-
-                PaymentService.allocate(obj)
-                after = serializer_inst(obj)
-                reason = form.cleaned_data.get("reason")
-
-                AuditLog.objects.create(
-                    user=obj.customer.owner,
-                    before=before,
-                    after=after,
-                    action="u",
-                    model="p",
-                    reason=reason,
-                )
-
-            else:
-                super().save_model(request, obj, form, change)
-                PaymentService.allocate(obj)
-
-
-@admin.register(Allocation)
-class AllocationAdmin(ReadOnlyModelAdmin):
-    list_display = [
-        "record",
-        "payment",
-        "amount",
-        "created_at",
-    ]
-    search_fields = [
-        "record__customer__logo",
-        "record__customer__name",
-        "record",
-        "payment",
-    ]
-    list_filter = [
-        "created_at",
-    ]
-
-
-@admin.register(Advance)
-class AdvanceAdmin(ReadOnlyModelAdmin):
-    list_display = [
-        "customer",
-        "total_amount",
-        "payment",
-        "created_at",
-    ]
-    search_fields = [
-        "customer__logo",
-        "customer__name",
-    ]
-    list_filter = ["created_at"]
-
-
-@admin.register(AdvanceUsage)
-class AdvanceUsageAdmin(ReadOnlyModelAdmin):
-    list_display = [
-        "advance",
-        "record",
-        "amount",
-        "created_at",
-    ]
-    search_fields = [
-        "advance__customer__logo",
-        "advance__customer__name",
-    ]
-    list_filter = ["created_at"]
+        return GroupRate.objects.prefetch_related("group__customer_set")
 
 
 @admin.register(AuditLog)
@@ -336,25 +156,3 @@ class AuditLogAdmin(ReadOnlyModelAdmin):
         "model",
         "action",
     ]
-
-
-@admin.register(Request)
-class RequestAdmin(admin.ModelAdmin):
-
-    # view methods
-    def get_record(self, obj):
-        return ", ".join(str(r) for r in Record.objects.all())
-    
-   
-
-    list_display = [
-        "owner",
-        "get_record",
-        "created_at",
-        "status",
-        "reason",
-    ]
-    search_fields = [
-        "owner__username",
-    ]
-    list_filter = ["created_at", "status", "owner__username"]
