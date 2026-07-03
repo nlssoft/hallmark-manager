@@ -192,12 +192,6 @@ class CustomerSerializer(serializers.ModelSerializer):
             return None
         return value
 
-    def validate(self, data):
-        user = self.context["request"].user
-        if user.parent:
-            raise ValidationError("You don't have permission to create new customers.")
-        return data
-
     def create(self, validated_data):
         owner = self.context["request"].user
         assigned_to = validated_data.pop("assigned_to", [])

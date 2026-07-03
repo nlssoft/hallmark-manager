@@ -71,14 +71,21 @@ class UserOTP(models.Model):
 
 
 class SubscriptionPlan(models.Model):
-    Tier_Choices = [("s", "Silver"), ("g", "Gold")]
-    Period_Choices = [("m", "Monthly"), ("sa", "Semi-Annually"), ("a", "Annually")]
+    Tier_Choices = [("silver", "Silver"), ("gold", "Gold")]
+    Period_Choices = [
+        ("monthly", "Monthly"),
+        ("semi-annually", "Semi-Annually"),
+        ("annually", "Annually"),
+    ]
 
-    tier = models.CharField(max_length=1, choices=Tier_Choices)
-    period = models.CharField(max_length=2, choices=Period_Choices)
+    tier = models.CharField(max_length=10, choices=Tier_Choices)
+    period = models.CharField(max_length=20, choices=Period_Choices)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     razorpay_plan_id = models.CharField(max_length=255, unique=True)
     max_employees = models.PositiveIntegerField(null=True, blank=True)
+    max_services = models.PositiveIntegerField(null=True, blank=True)
+    max_assigned_toes = models.PositiveIntegerField(null=True, blank=True)
+    max_downloads = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["-pk"]
@@ -92,7 +99,7 @@ class UserSubscription(models.Model):
         ("trial", "Trial"),
         ("active", "Active"),
         ("expired", "Expired"),
-        ("canceled", "Canceled"),
+        ("cancelled", "cancelled"),
     ]
 
     user = models.OneToOneField(
@@ -117,7 +124,7 @@ class UserSubscription(models.Model):
     @property
     def is_active(self):
         """
-        we do not check for status since even if subscription is canceled,
+        we do not check for status since even if subscription is cancelled,
         it can still be active until the end of the current period
         """
         now = timezone.now()
@@ -129,9 +136,12 @@ class UserSubscription(models.Model):
     @property
     def tier(self):
         if self.status == "trial":
-            return "s"
+            return "silver"
 
         return self.subscription_plan.tier if self.subscription_plan else None
+
+    def __str__(self) -> str:
+        return f"User: {self.user}, plan: {self.subscription_plan}, razorpay_subscription_id: {self.razorpay_subscription_id}"
 
 
 class RazorpayEvent(models.Model):
@@ -147,7 +157,9 @@ class UserSubscriptionHistory(models.Model):
     user_subscription = models.ForeignKey(
         UserSubscription, related_name="payments", on_delete=models.CASCADE
     )
-    razorpay_payment_id = models.CharField(max_length=255, unique=True)
+    razorpay_payment_id = models.CharField(
+        max_length=255, unique=True, null=True, blank=True
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     processed_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=30)

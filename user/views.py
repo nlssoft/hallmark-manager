@@ -20,8 +20,9 @@ from rest_framework_simplejwt.token_blacklist.models import (
     BlacklistedToken,
 )
 from core.permissions import ParentAccount_Only
+from .permissions import IsSubscriptionActive
 from core.models import Customer
-from .models import User, UserOTP, Employee
+from .models import User, UserOTP, Employee, SubscriptionPlan
 from .serializers import (
     VerifyEmailOTPSerializer,
     ChangeEmailOTPSerializer,
@@ -37,6 +38,7 @@ from .Services.helper_functions import (
     create_otp_for_email_verification,
     create_otp_for_email_change,
 )
+
 from .Services.throttles import OTPCooldownThrottling
 from dj_rest_auth.jwt_auth import get_refresh_view
 from dj_rest_auth.views import UserDetailsView
@@ -222,7 +224,7 @@ class ChangeEmailOTPView(generics.GenericAPIView):
         return Response({"message": "Account verified. You can now log in."})
 
 
-class EmployeeView(
+class EmployeeMixView(
     ListModelMixin,
     RetrieveModelMixin,
     CreateModelMixin,
@@ -230,7 +232,7 @@ class EmployeeView(
     GenericViewSet,
 ):
     serializer_class = EmployeeSerializer
-    permission_classes = [ParentAccount_Only]
+    permission_classes = [ParentAccount_Only, IsSubscriptionActive]
     filter_backends = [SearchFilter]
     search_fields = ["username", "customer__name", "customer__logo"]
 
@@ -327,3 +329,27 @@ class EmployeeView(
         )
 
         return Response({"synced": len(new_id)})
+
+
+class SubscriptionPlanApiView(APIView):
+    permission_classes = [ParentAccount_Only]
+
+    def get(self, request):
+        plans = SubscriptionPlan.objects.all()
+
+        data = [
+            {
+                "pk": p.pk,
+                "tier": p.tier,
+                "tier_display": p.get_tier_display(),
+                "period": p.period,
+                "period_display": p.get_period_display(),
+                "price": str(p.price),
+                "max_employess": str(p.max_employees),
+                "max_services": str(p.max_services),
+                "max_assigned_toes": str(p.max_assigned_toes),
+            }
+            for p in plans
+        ]
+
+        return Response(data, status=status.HTTP_200_OK)

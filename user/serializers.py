@@ -140,7 +140,15 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SubscriptionPlan
-        fields = ["tier", "period", "price", "max_employees"]
+        fields = [
+            "tier",
+            "period",
+            "price",
+            "max_employees",
+            "max_services",
+            "max_assigned_toes",
+            "max_downloads",
+        ]
         read_only_fields = fields
 
 
@@ -153,6 +161,7 @@ class UserSubscriptionSerializer(serializers.ModelSerializer):
         fields = [
             "status",
             "subscription_plan",
+            "current_period_start",
             "current_period_end",
         ]
         read_only_fields = fields

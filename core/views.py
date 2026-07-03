@@ -6,7 +6,6 @@ from .models import (
     GroupRate,
     Record,
     Payment,
-    Advance,
     AdvanceUsage,
     Allocation,
     AuditLog,
@@ -33,6 +32,9 @@ from .serializers import (
     WriteRequestSerializer,
     sync_customerSerializer,
 )
+
+from user.permissions import IsSubscriptionActive
+
 from .permissions import (
     ParentAccount_Only,
     CustomerEndpointPermission,
@@ -232,7 +234,7 @@ class ServiceViewset(ModelViewSet):
 
 
 class RecordViewset(ModelViewSet):
-    permission_classes = [RecordEndpointPermission]
+    permission_classes = [RecordEndpointPermission, IsSubscriptionActive]
     pagination_class = LargePagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = RecordFilter
@@ -357,7 +359,7 @@ class RecordViewset(ModelViewSet):
 
 
 class PaymentViewset(ModelViewSet):
-    permission_classes = [ParentAccount_Only]
+    permission_classes = [ParentAccount_Only, IsSubscriptionActive]
     pagination_class = LargePagination
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_class = PaymentFilter
@@ -473,7 +475,7 @@ class AuditLogViewset(ReadOnlyModelViewSet):
 
 
 class RequestViewset(ModelViewSet):
-    permission_classes = [RequestEndpointPermission]
+    permission_classes = [RequestEndpointPermission, IsSubscriptionActive]
     pagination_class = StandardPagination
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = RequestFilter
@@ -559,7 +561,7 @@ class RequestViewset(ModelViewSet):
 
 
 class RecordSummaryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSubscriptionActive]
 
     def get(self, request):
 
@@ -696,7 +698,7 @@ class RecordSummaryView(APIView):
 
 
 class PaymentSummaryView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSubscriptionActive]
 
     def get(self, request):
 

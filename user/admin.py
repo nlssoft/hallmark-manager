@@ -1,8 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DUserAdmin
+from django.db.models.query import QuerySet
+from django.http import HttpRequest
 from django.utils import timezone
 from datetime import timedelta
-
+from django.contrib import messages
+from django.db import transaction
+from django.db.models import Q
 
 from .models import (
     User,
@@ -127,25 +131,126 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
     ]
 
 
-# Action for UserSubscription
+# stand Alone functions
 
 
+@admin.action(description="⏱ Extend trial by 30 days")
 def extend_trial_30(modeladmin, request, queryset):
     for sub in queryset:
         sub.trial_end = max(sub.trial_end, timezone.now()) + timedelta(days=30)
+        sub.razorpay_status = "manual"
+        sub.save(update_fields=["trial_end", "razorpay_status"])
+    modeladmin.message_user(
+        request, f"{queryset.count()} trial(s) extended 30 days.", messages.SUCCESS
+    )
+
+
+@transaction.atomic()
+def force_activate(modeladmin, request, queryset, days, action):
+    today = timezone.now()
+
+    if queryset.filter(subscription_plan__isnull=True).exists():
+        modeladmin.message_user(
+            request,
+            "One or more user has no Subscription plan.",
+            level=messages.ERROR,
+        )
+        return
+
+    elif queryset.filter(~Q(subscription_plan__period=action)).exists():
+        modeladmin.message_user(
+            request,
+            "One or more user has a different selected plan period then the action.",
+            level=messages.ERROR,
+        )
+        return
+
+    queryset.update(
+        status="active",
+        razorpay_status="manual",
+        razorpay_subscription_id=None,
+        current_period_start=today,
+        current_period_end=today + timedelta(days=days),
+    )
+
+    history = [
+        UserSubscriptionHistory(
+            user_subscription=us,
+            amount=us.subscription_plan.price,
+            status="manual",
+        )
+        for us in queryset
+    ]
+
+    UserSubscriptionHistory.objects.bulk_create(history)
+
+    modeladmin.message_user(
+        request,
+        f"{queryset.count()}  activated for {days} days (no Razorpay). Payment records have been created with default price.",
+        messages.SUCCESS,
+    )
+
+
+@admin.action(description="✅ Force activate — 30 days (manual)")
+def force_activate_30(modeladmin, request, queryset):
+    force_activate(modeladmin, request, queryset, 30, "monthly")
+
+
+@admin.action(description="✅ Force activate — 180 days (manual)")
+def force_activate_180(modeladmin, request, queryset):
+    force_activate(modeladmin, request, queryset, 180, "semi-annually")
+
+
+@admin.action(description="✅ Force activate — 365 days (manual)")
+def force_activate_365(modeladmin, request, queryset):
+    force_activate(modeladmin, request, queryset, 365, "annually")
+
+
+def force_cancel(modeladmin, request, queryset):
+    queryset.update(
+        status="cancelled",
+        razorpay_status="manual_cancelled",
+    )
+    modeladmin.message_user(
+        request, f"{queryset.count()} subscription(s) cancelled.", messages.WARNING
+    )
 
 
 @admin.register(UserSubscription)
 class UserSubscriptionAdmin(admin.ModelAdmin):
 
-    @admin.display(description="Days Left", ordering="current_period_end")
+    actions = [
+        extend_trial_30,
+        force_activate_30,
+        force_activate_180,
+        force_activate_365,
+    ]
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet:
+        return UserSubscription.objects.filter(
+            user__parent=None, user__is_superuser=False
+        ).select_related("user", "subscription_plan")
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "user":
+            kwargs["queryset"] = User.objects.filter(
+                parent=None,
+                is_superuser=False,
+            )
+
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    @admin.display(description="Time Left", ordering="current_period_end")
     def time_left(self, obj):
         if obj.current_period_end:
-            return obj.current_period_end - timezone.now()
+            left = obj.current_period_end - timezone.now()
         else:
-            return "N/A"
+            left = obj.trial_end - timezone.now()
+
+        return max(left, timedelta(0))
 
     list_display = [
+        "__str__",
         "user",
         "subscription_plan",
         "created_at",
@@ -158,12 +263,14 @@ class UserSubscriptionAdmin(admin.ModelAdmin):
         "time_left",
     ]
 
-    search_fields = [
-        "user__username",
-        "subscription_plan__tier",
-    ]
+    search_fields = ["user__username"]
 
-    list_filter = ["status", "razorpay_status", ExpiringSoonFilter]
+    list_filter = [
+        "subscription_plan__tier",
+        "status",
+        "razorpay_status",
+        ExpiringSoonFilter,
+    ]
 
     ordering = ["-current_period_end"]
 
@@ -193,4 +300,18 @@ class UserSubscriptionHistoryAdmin(admin.ModelAdmin):
         "status",
     ]
 
-    list_filter = []
+    search_fields = [
+        "user_subscription__user__username",
+        "user_subscription__razorpay_subscription_id",
+        "razorpay_payment_id",
+    ]
+
+    list_filter = ["status"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        if obj == None:
+            return True
+        return obj.status == "manual"
