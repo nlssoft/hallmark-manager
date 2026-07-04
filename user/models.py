@@ -14,7 +14,7 @@ class User(AbstractUser):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="Employee",
+        related_name="employee",
     )
 
     class Meta:
@@ -94,7 +94,7 @@ class SubscriptionPlan(models.Model):
         return f"Tier: {self.tier} Period: {self.period}, Price: {self.price}"
 
 
-class UserSubscription(models.Model):
+class Subscription(models.Model):
     status_choices = [
         ("trial", "Trial"),
         ("active", "Active"),
@@ -103,7 +103,7 @@ class UserSubscription(models.Model):
     ]
 
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, related_name="subscription", on_delete=models.CASCADE
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE
     )
     subscription_plan = models.ForeignKey(
         SubscriptionPlan, on_delete=models.SET_NULL, null=True, blank=True
@@ -153,9 +153,9 @@ class RazorpayEvent(models.Model):
         ordering = ["-processed_at"]
 
 
-class UserSubscriptionHistory(models.Model):
-    user_subscription = models.ForeignKey(
-        UserSubscription, related_name="payments", on_delete=models.CASCADE
+class SubscriptionHistory(models.Model):
+    subscription = models.ForeignKey(
+        Subscription, related_name="payments", on_delete=models.CASCADE
     )
     razorpay_payment_id = models.CharField(
         max_length=255, unique=True, null=True, blank=True

@@ -7,8 +7,11 @@ from rest_framework.permissions import AllowAny
 from core.permissions import ParentAccount_Only
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models import Count
 
-from user.models import UserSubscription, SubscriptionPlan, RazorpayEvent
+from user.models import Subscription, SubscriptionPlan, RazorpayEvent
+from core.models import Customer
+
 from user.Services.subscription_service import (
     create_razorpay_subscription,
     handle_subscription_activated,
@@ -20,17 +23,54 @@ from user.Services.subscription_service import (
 from .razorpay_client import client as razorpay
 
 
+def disable_employees():
+    pass
+
+def disable_services():
+    pass
+
+def removed_assigned_to():
+    pass
+
+
+
 class SubscriptionCreateApiView(APIView):
     permission_classes = [ParentAccount_Only]
 
     def post(self, request):
+        user = request.user
+
+        new_plan_obj = request.data.get("new_plan_obj")
         plan_id = request.data.get("plan_id")
+        disable_employee_ids = request.data.get("disable_employee")
+        disable_service_ids = request.data.get("disable_service")
+        remove_assigned_to_ids = request.data.get("remove_assigned_to")
+
 
         if not plan_id:
             return Response({"error": "plan_id is required"}, status=status.HTTP_400_BAD_REQUEST)
         
+
+        if user.subscription.tier == "gold":
+            if user.employee.all().count() > new_plan_obj.max_employees:
+                disable_employees(disable_employee_ids, new_plan_obj)
+
+            if user.service.all().count() > new_plan_obj.max_services:
+                disable_services(disable_service_ids, new_plan_obj)
+            
+            if (
+                Customer.objects.filter(owner=user).annotate(
+                    employee_count= Count("assigned_to")
+                    .filter(employee_count__gt=new_plan_obj.max_assigned_toes)
+                ).exists()
+            ):
+                removed_assigned_to(remove_assigned_to_ids, new_plan_obj)
+         
+
+
+        
         try:
-            payment_data= create_razorpay_subscription(request.user, plan_id)
+            payment_data= create_razorpay_subscription(user, plan_id)
         except SubscriptionPlan.DoesNotExist:
             return Response({"error": "Plan does not exist"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
@@ -45,7 +85,7 @@ class SubscritionStatusApiView(APIView):
     def get(self, request):
         try:
             sub= request.user.subscription
-        except UserSubscription.DoesNotExist:
+        except Subscription.DoesNotExist:
             return Response({"error": "No subscription Found."}, status=status.HTTP_404_NOT_FOUND)
         
         return Response({
@@ -70,7 +110,7 @@ class SubscriptionCancelledApiView(APIView):
         
         try:
             sub= request.user.subscription
-        except UserSubscription.DoesNotExist:
+        except Subscription.DoesNotExist:
             return Response({"error": "No subscription Found."}, status=status.HTTP_404_NOT_FOUND)
         
         if not sub.razorpay_subscription_id:

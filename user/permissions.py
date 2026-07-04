@@ -1,5 +1,5 @@
 from rest_framework.permissions import BasePermission
-from user.models import UserSubscription
+from user.models import Subscription
 
 
 class IsSubscriptionActive(BasePermission):
@@ -16,5 +16,5 @@ class IsSubscriptionActive(BasePermission):
     def has_object_permission(self, request, view, obj):
         try:
             return request.user.subscription.is_active
-        except UserSubscription.DoesNotExist:
+        except Subscription.DoesNotExist:
             return False

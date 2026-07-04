@@ -1,4 +1,4 @@
-from .models import Request
+from ..models import Request
 
 
 

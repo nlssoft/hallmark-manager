@@ -2,7 +2,7 @@ from datetime import datetime, UTC
 from decimal import Decimal
 
 
-from user.models import UserSubscription, SubscriptionPlan, UserSubscriptionHistory
+from user.models import Subscription, SubscriptionPlan, SubscriptionHistory
 from user.razorpay_client import client as razorpay
 
 # helper
@@ -23,8 +23,8 @@ def _get_sub(razorpay_id):
     lookups to subscription by razorpay subscription id
     """
     try:
-        return UserSubscription.objects.get(razorpay_subscription_id=razorpay_id)
-    except UserSubscription.DoesNotExist:
+        return Subscription.objects.get(razorpay_subscription_id=razorpay_id)
+    except Subscription.DoesNotExist:
         return None
 
 
@@ -76,8 +76,8 @@ def handle_subscription_activated(subscription, payment):
     if not sub:
         return
 
-    UserSubscriptionHistory.objects.create(
-        user_subscription=sub,
+    SubscriptionHistory.objects.create(
+        subscription=sub,
         razorpay_payment_id=payment.get("id"),
         amount=_convert_to_decimal(payment.get("amount")),
         status=payment.get("status"),
@@ -108,8 +108,8 @@ def handle_subscription_charged(subscription, payment):
     if not sub:
         return
 
-    UserSubscriptionHistory.objects.create(
-        user_subscription=sub,
+    SubscriptionHistory.objects.create(
+        subscription=sub,
         razorpay_payment_id=payment.get("id"),
         amount=_convert_to_decimal(payment.get("amount")),
         status=payment.get("status"),

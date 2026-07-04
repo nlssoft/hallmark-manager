@@ -109,7 +109,7 @@ class Customer(models.Model):
 
 class Service(models.Model):
     owner = models.ForeignKey(
-        user, on_delete=models.CASCADE, related_name="owned_service"
+        user, on_delete=models.CASCADE, related_name="service"
     )
     name = models.CharField(max_length=255)
 

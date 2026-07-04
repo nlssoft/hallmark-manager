@@ -1,5 +1,5 @@
 # cls
-from .models import User, Employee, Profile, UserOTP, SubscriptionPlan, UserSubscription
+from .models import User, Employee, Profile, UserOTP, SubscriptionPlan, Subscription
 from core.models import Customer
 from core.nestedserializer import NestedCustomerSerializer
 
@@ -152,12 +152,12 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class UserSubscriptionSerializer(serializers.ModelSerializer):
+class SubscriptionSerializer(serializers.ModelSerializer):
     status = serializers.CharField(source="get_status_display", read_only=True)
     subscription_plan = SubscriptionPlanSerializer()
 
     class Meta:
-        model = UserSubscription
+        model = Subscription
         fields = [
             "status",
             "subscription_plan",
@@ -170,7 +170,7 @@ class UserSubscriptionSerializer(serializers.ModelSerializer):
 class UserSerializer(UserDetailsSerializer):
     profile = ProfileSerializer(required=False, allow_null=True)
     email = serializers.EmailField(required=True)
-    subscription = UserSubscriptionSerializer(read_only=True)
+    subscription = SubscriptionSerializer(read_only=True)
 
     class Meta(UserDetailsSerializer.Meta):
         fields = (

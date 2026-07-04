@@ -12,8 +12,8 @@ from .models import (
     User,
     Profile,
     SubscriptionPlan,
-    UserSubscription,
-    UserSubscriptionHistory,
+    Subscription,
+    SubscriptionHistory,
     RazorpayEvent,
 )
 
@@ -128,6 +128,9 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
         "price",
         "razorpay_plan_id",
         "max_employees",
+        "max_services",
+        "max_assigned_toes",
+        
     ]
 
 
@@ -174,15 +177,15 @@ def force_activate(modeladmin, request, queryset, days, action):
     )
 
     history = [
-        UserSubscriptionHistory(
-            user_subscription=us,
+        SubscriptionHistory(
+            subscription=us,
             amount=us.subscription_plan.price,
             status="manual",
         )
         for us in queryset
     ]
 
-    UserSubscriptionHistory.objects.bulk_create(history)
+    SubscriptionHistory.objects.bulk_create(history)
 
     modeladmin.message_user(
         request,
@@ -216,8 +219,8 @@ def force_cancel(modeladmin, request, queryset):
     )
 
 
-@admin.register(UserSubscription)
-class UserSubscriptionAdmin(admin.ModelAdmin):
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
 
     actions = [
         extend_trial_30,
@@ -227,7 +230,7 @@ class UserSubscriptionAdmin(admin.ModelAdmin):
     ]
 
     def get_queryset(self, request: HttpRequest) -> QuerySet:
-        return UserSubscription.objects.filter(
+        return Subscription.objects.filter(
             user__parent=None, user__is_superuser=False
         ).select_related("user", "subscription_plan")
 
@@ -289,11 +292,11 @@ class RazorpayEventAdmin(admin.ModelAdmin):
         return False
 
 
-@admin.register(UserSubscriptionHistory)
-class UserSubscriptionHistoryAdmin(admin.ModelAdmin):
+@admin.register(SubscriptionHistory)
+class SubscriptionHistoryAdmin(admin.ModelAdmin):
 
     list_display = [
-        "user_subscription",
+        "subscription",
         "razorpay_payment_id",
         "amount",
         "processed_at",
@@ -301,8 +304,8 @@ class UserSubscriptionHistoryAdmin(admin.ModelAdmin):
     ]
 
     search_fields = [
-        "user_subscription__user__username",
-        "user_subscription__razorpay_subscription_id",
+        "subscription__user__username",
+        "subscription__razorpay_subscription_id",
         "razorpay_payment_id",
     ]
 

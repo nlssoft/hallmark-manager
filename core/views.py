@@ -42,7 +42,7 @@ from .permissions import (
     RequestEndpointPermission,
 )
 from .money_logic import PaymentService
-from .requestservices import RequestService
+from .services.requestservices import RequestService
 from .services.helper_functions import (
     get_reason,
     get_customer_ids,
