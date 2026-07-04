@@ -278,8 +278,8 @@ class EmployeeMixView(
     def ban(self, request, pk=None):
         employee = self.get_object()
 
-        employee.is_active = False
-        employee.save(update_fields=["is_active"])
+        employee.disabled = True
+        employee.save(update_fields=["disabled"])
 
         # access is handle by simple jwt as it checks on every request -  user.is_active
         # refresh blaclisting is not needed but still the code below is profesniol cleanup.
@@ -294,8 +294,8 @@ class EmployeeMixView(
     def unban(self, request, pk=None):
         employee = self.get_object()
 
-        employee.is_active = True
-        employee.save(update_fields=["is_active"])
+        employee.disabled = False
+        employee.save(update_fields=["disabled"])
 
         return Response({"message": "Employee is unbanned."}, status=status.HTTP_200_OK)
 
@@ -329,27 +329,3 @@ class EmployeeMixView(
         )
 
         return Response({"synced": len(new_id)})
-
-
-class SubscriptionPlanApiView(APIView):
-    permission_classes = [ParentAccount_Only]
-
-    def get(self, request):
-        plans = SubscriptionPlan.objects.all()
-
-        data = [
-            {
-                "pk": p.pk,
-                "tier": p.tier,
-                "tier_display": p.get_tier_display(),
-                "period": p.period,
-                "period_display": p.get_period_display(),
-                "price": str(p.price),
-                "max_employess": str(p.max_employees),
-                "max_services": str(p.max_services),
-                "max_assigned_toes": str(p.max_assigned_toes),
-            }
-            for p in plans
-        ]
-
-        return Response(data, status=status.HTTP_200_OK)

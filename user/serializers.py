@@ -146,7 +146,7 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
             "price",
             "max_employees",
             "max_services",
-            "max_assigned_toes",
+            "max_assignments_per_customer",
             "max_downloads",
         ]
         read_only_fields = fields

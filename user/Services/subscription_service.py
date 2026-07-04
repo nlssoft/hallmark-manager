@@ -5,6 +5,38 @@ from decimal import Decimal
 from user.models import Subscription, SubscriptionPlan, SubscriptionHistory
 from user.razorpay_client import client as razorpay
 
+
+
+
+        if not plan_id:
+            return Response(
+                {"error": "plan_id is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            new_plan = SubscriptionPlan.objects.get(pk=plan_id)
+        except SubscriptionPlan.DoesNotExist:
+            return Response(
+                {"error": "Plan does not exist"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        reduce_needed = SubscriptionHelperFN.perfrom_check(user, new_plan)
+
+        if any(reduce_needed):
+            try:
+                disable_employee_ids = request.data.get("disable_employee")
+                disable_service_ids = request.data.get("disable_service")
+                customer_employee_ids = request.data.get("remove_assigned_to")
+                reduce(
+                    disable_employee_ids,
+                    disable_service_ids,
+                    customer_employee_ids,
+                    new_plan,
+                    reduce_needed,
+                    user,
+                )
+            except ValueError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 # helper
 
 

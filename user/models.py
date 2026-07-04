@@ -1,14 +1,17 @@
+from typing import Iterable
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
-from .managers import EmployeeManager
+from .managers import EmployeeManager, CustomUserManager
 
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
     pending_email = models.EmailField(null=True, blank=True)
     email_verified = models.BooleanField(default=False)
+    disabled = models.BooleanField(default=True)
     parent = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
@@ -16,6 +19,16 @@ class User(AbstractUser):
         blank=True,
         related_name="employee",
     )
+
+    manager = CustomUserManager()
+
+    def save(self, *args, **kwargs):
+        """
+        IMPORTANT... NOTE that this only works for save() not update() or bulk opretions.
+        at save time it overrides is_active based on disabled so that ban/unban/subsciption_disable work.
+        """
+        self.is_active = not self.disabled
+        return super().save(*args, **kwargs)
 
     class Meta:
         ordering = ["-pk"]
@@ -84,7 +97,7 @@ class SubscriptionPlan(models.Model):
     razorpay_plan_id = models.CharField(max_length=255, unique=True)
     max_employees = models.PositiveIntegerField(null=True, blank=True)
     max_services = models.PositiveIntegerField(null=True, blank=True)
-    max_assigned_toes = models.PositiveIntegerField(null=True, blank=True)
+    max_assignments_per_customer = models.PositiveIntegerField(null=True, blank=True)
     max_downloads = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
@@ -102,9 +115,7 @@ class Subscription(models.Model):
         ("cancelled", "cancelled"),
     ]
 
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE
-    )
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     subscription_plan = models.ForeignKey(
         SubscriptionPlan, on_delete=models.SET_NULL, null=True, blank=True
     )
@@ -166,3 +177,12 @@ class SubscriptionHistory(models.Model):
 
     class Meta:
         ordering = ["-processed_at"]
+
+
+class TemporaryPendingPlanChange(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    new_plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE)
+    employee_id = models.JSONField(null=True, blank=True)
+    service_id = models.JSONField(null=True, blank=True)
+    customer_employee_id = models.JSONField(null=True, blank=True)
+    created_at = models.DateField(auto_now_add=True)

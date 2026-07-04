@@ -159,6 +159,25 @@ class sync_customerSerializer(serializers.Serializer):
 
 
 # customer serializers .2
+
+
+# Read
+class ReadOnlyCustomerSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Customer
+        fields = (
+            "id",
+            "logo",
+            "name",
+            "address",
+            "number",
+            "email",
+            "assigned_to",
+        )
+        read_only_fields = fields
+
+
 # Read & Write
 class CustomerSerializer(serializers.ModelSerializer):
     due = serializers.DecimalField(

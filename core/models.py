@@ -41,6 +41,7 @@ class Customer(models.Model):
 
     assigned_to = models.ManyToManyField(
         user,
+        through="CustomerAssignment",
         blank=True,
     )
 
@@ -107,11 +108,20 @@ class Customer(models.Model):
         return amount - discount - paid
 
 
+class CustomerAssignment(models.Model):
+    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+    employee = models.ForeignKey(user, on_delete=models.CASCADE)
+    active = models.BooleanField(default=True)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("customer", "employee")
+
+
 class Service(models.Model):
-    owner = models.ForeignKey(
-        user, on_delete=models.CASCADE, related_name="service"
-    )
+    owner = models.ForeignKey(user, on_delete=models.CASCADE, related_name="service")
     name = models.CharField(max_length=255)
+    disabled = models.BooleanField(default=False)
 
     def __str__(self) -> str:
         return f"{self.name}"

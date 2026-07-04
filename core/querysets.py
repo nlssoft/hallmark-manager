@@ -9,6 +9,7 @@ from django.db.models import (
     Subquery,
     Case,
     When,
+    Count,
 )
 from django.db.models.functions import Coalesce
 from django.apps import apps

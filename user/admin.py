@@ -129,8 +129,7 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
         "razorpay_plan_id",
         "max_employees",
         "max_services",
-        "max_assigned_toes",
-        
+        "max_assignments_per_customer",
     ]
 
 
