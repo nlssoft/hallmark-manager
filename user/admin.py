@@ -16,7 +16,7 @@ from .models import (
     SubscriptionHistory,
     RazorpayEvent,
 )
-
+from razorpay_client import client as razorpay
 from .filters import ExpiringSoonFilter
 
 # need to think about what to do???
@@ -208,6 +208,7 @@ def force_activate_365(modeladmin, request, queryset):
     force_activate(modeladmin, request, queryset, 365, "annually")
 
 
+@admin.action(description="Force Cancel")
 def force_cancel(modeladmin, request, queryset):
     queryset.update(
         status="cancelled",
@@ -216,6 +217,81 @@ def force_cancel(modeladmin, request, queryset):
     modeladmin.message_user(
         request, f"{queryset.count()} subscription(s) cancelled.", messages.WARNING
     )
+
+
+@admin.action(description=" Force Cancel Razorpay")
+def force_cancel_razorpay(modeladmin, request, queryset):
+    cancelled_count = 0
+    failed = []
+    skipped_count = 0
+
+    for sub in queryset:
+        # clean up any orphaned "previous" subscription from an in-flight upgrade
+        if sub.previous_razorpay_subscription_id:
+            try:
+                razorpay.subscription.cancel(
+                    sub.previous_razorpay_subscription_id, {"cancel_at_cycle_end": 0}
+                )
+            except Exception as e:
+                failed.append(
+                    f"{sub.pk} previous sub ({sub.previous_razorpay_subscription_id}): {e}"
+                )
+            sub.previous_razorpay_subscription_id = None
+
+        if not sub.razorpay_subscription_id:
+            # no razorpay subscription linked (cash-based) — just mark cancelled
+            sub.status = "cancelled"
+            sub.razorpay_status = "manual_cancelled"
+            sub.save(
+                update_fields=[
+                    "status",
+                    "razorpay_status",
+                    "previous_razorpay_subscription_id",
+                ]
+            )
+            skipped_count += 1
+            continue
+
+        try:
+            razorpay.subscription.cancel(
+                sub.razorpay_subscription_id, {"cancel_at_cycle_end": 0}
+            )
+        except Exception as e:
+            failed.append(f"{sub.pk} ({sub.razorpay_subscription_id}): {e}")
+            sub.save(
+                update_fields=["previous_razorpay_subscription_id"]
+            )  # still persist the cleared "previous" id
+            continue
+
+        sub.status = "cancelled"
+        sub.razorpay_status = "manual_cancelled"
+        sub.save(
+            update_fields=[
+                "status",
+                "razorpay_status",
+                "previous_razorpay_subscription_id",
+            ]
+        )
+        cancelled_count += 1
+
+    if cancelled_count:
+        modeladmin.message_user(
+            request,
+            f"{cancelled_count} subscription(s) cancelled on Razorpay.",
+            messages.WARNING,
+        )
+    if skipped_count:
+        modeladmin.message_user(
+            request,
+            f"{skipped_count} subscription(s) had no Razorpay id — marked cancelled directly.",
+            messages.INFO,
+        )
+    if failed:
+        modeladmin.message_user(
+            request,
+            f"Failed to cancel {len(failed)} on Razorpay: {'; '.join(failed)}",
+            messages.ERROR,
+        )
 
 
 @admin.register(Subscription)

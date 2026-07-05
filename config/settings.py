@@ -286,3 +286,22 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL")
 RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET")
 RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET")
+
+
+# logging ERRORS
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "file": {
+            "level": "ERROR",
+            "class": "logging.FileHandler",
+            "filename": BASE_DIR / "logs" / "error.log",
+        },
+    },
+    "root": {
+        "handlers": ["file"],
+        "level": "ERROR",
+    },
+}

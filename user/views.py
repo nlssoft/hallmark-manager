@@ -34,7 +34,7 @@ from .Services.emails import (
     send_verified_email,
     send_otp_email_change,
 )
-from .Services.helper_functions import (
+from .Services.otpfunction import (
     create_otp_for_email_verification,
     create_otp_for_email_change,
 )

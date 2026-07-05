@@ -1,43 +1,21 @@
 from datetime import datetime, UTC
 from decimal import Decimal
+from django.db import transaction
 
-
-from user.models import Subscription, SubscriptionPlan, SubscriptionHistory
+from .subscriptionlimitservices import SubscriptionHelperFN
+from user.models import (
+    Subscription,
+    SubscriptionPlan,
+    SubscriptionHistory,
+    TemporaryPendingPlanChange,
+)
 from user.razorpay_client import client as razorpay
+import logging
 
-
-
-
-        if not plan_id:
-            return Response(
-                {"error": "plan_id is required"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            new_plan = SubscriptionPlan.objects.get(pk=plan_id)
-        except SubscriptionPlan.DoesNotExist:
-            return Response(
-                {"error": "Plan does not exist"}, status=status.HTTP_400_BAD_REQUEST
-            )
-
-        reduce_needed = SubscriptionHelperFN.perfrom_check(user, new_plan)
-
-        if any(reduce_needed):
-            try:
-                disable_employee_ids = request.data.get("disable_employee")
-                disable_service_ids = request.data.get("disable_service")
-                customer_employee_ids = request.data.get("remove_assigned_to")
-                reduce(
-                    disable_employee_ids,
-                    disable_service_ids,
-                    customer_employee_ids,
-                    new_plan,
-                    reduce_needed,
-                    user,
-                )
-            except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 # helper
+
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_unix_timestamp(timestamp):
@@ -67,6 +45,9 @@ def _convert_to_decimal(amount):
     return Decimal(amount / Decimal(100))
 
 
+# functions
+
+
 def create_razorpay_subscription(user, plan_id):
     """
     request razorpay to create subscription for user with plan_id
@@ -90,13 +71,23 @@ def create_razorpay_subscription(user, plan_id):
 
     sub = user.subscription
 
+    sub.previous_razorpay_subscription_id = (
+        sub.razorpay_subscription_id
+    )  # for canceltions
     sub.razorpay_subscription_id = response["id"]
     sub.subscription_plan = plan
-    sub.save(update_fields=["razorpay_subscription_id", "subscription_plan"])
+    sub.save(
+        update_fields=[
+            "previous_razorpay_subscription_id",
+            "razorpay_subscription_id",
+            "subscription_plan",
+        ]
+    )
 
     return {"subscription_id": response["id"], "status": response["status"]}
 
 
+@transaction.atomic()
 def handle_subscription_activated(subscription, payment):
     """
     on webhook subscription activated
@@ -107,6 +98,14 @@ def handle_subscription_activated(subscription, payment):
 
     if not sub:
         return
+
+    obj = TemporaryPendingPlanChange.objects.filter(user=sub.user).first()
+    if obj:
+        SubscriptionHelperFN.reduce(obj)
+        obj.delete()
+
+    if sub.subscription_plan.tier == "gold":
+        SubscriptionHelperFN.return_benefits(sub.user)
 
     SubscriptionHistory.objects.create(
         subscription=sub,
@@ -119,12 +118,25 @@ def handle_subscription_activated(subscription, payment):
     sub.razorpay_status = subscription.get("status")
     sub.current_period_start = _parse_unix_timestamp(subscription.get("current_start"))
     sub.current_period_end = _parse_unix_timestamp(subscription.get("current_end"))
+
+    # cancel old subscription if any
+    old_id = sub.previous_razorpay_subscription_id
+    if old_id and old_id != sub.razorpay_subscription_id:
+        try:
+            razorpay.subscription.cancel(old_id, {"cancel_at_cycle_end": 0})
+        except Exception:
+            logger.exception(
+                f"Failed to cancel old razorpay subscription: {old_id} for user: {sub.user_id}"
+            )
+        sub.previous_razorpay_subscription_id = None
+
     sub.save(
         update_fields=[
             "status",
             "razorpay_status",
             "current_period_start",
             "current_period_end",
+            "previous_razorpay_subscription_id",
         ]
     )
 

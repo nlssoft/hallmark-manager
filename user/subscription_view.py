@@ -10,7 +10,11 @@ from rest_framework import status
 from django.db.models import Count
 from django.db import transaction
 
-from user.models import Subscription, SubscriptionPlan, RazorpayEvent
+from user.models import (
+    Subscription,
+    SubscriptionPlan,
+    RazorpayEvent,
+)
 from .serializers import ReadOnlyEmployeeSerializer
 from core.serializers import ServiceSerializer, ReadOnlyCustomerSerializer
 from Services.subscriptionlimitservices import SubscriptionHelperFN
@@ -61,12 +65,13 @@ class SubscriptionPlanPreviewApiView(APIView):
         user = request.user
         plan_id = request.data.get("plan_id")
 
-        if not plan_id:
+        try:
+            new_plan = SubscriptionPlan.objects.get(pk=plan_id)
+        except SubscriptionPlan.DoesNotExist:
             return Response(
-                {"error": "plan_id is required"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Subscription plan is required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-        new_plan = SubscriptionPlan.objects.get(pk=plan_id)
 
         data["subscription_plan"] = {
             "pk": new_plan.pk,
@@ -82,7 +87,6 @@ class SubscriptionPlanPreviewApiView(APIView):
 
         # Upgrade
         if new_plan.tier == "gold":
-            data["bools"] = "upgrade"
 
             data["employee"] = list(
                 Employee.objects.filter(parent=user, is_active=False)
@@ -95,22 +99,18 @@ class SubscriptionPlanPreviewApiView(APIView):
             )
 
         # DownGrade
-        queryset, employee_count, service_count = SubscriptionHelperFN.perfrom_check(
-            user, new_plan
-        )
+        customer, employee, service = SubscriptionHelperFN.need_reducing(user, new_plan)
 
-        data["bools"] = (employee_count, service_count, bool(queryset))
+        data["bools"] = any((employee, service, customer))
 
-        if employee_count:
-            data["employee"] = ReadOnlyEmployeeSerializer(
-                user.employee.all(), many=True
-            )
+        if employee:
+            data["employee"] = ReadOnlyEmployeeSerializer(employee, many=True).data
 
-        if service_count:
-            data["service"] = ServiceSerializer(user.service.all(), many=True)
+        if service:
+            data["service"] = ServiceSerializer(service, many=True).data
 
-        if queryset:
-            data["customer"] = ReadOnlyCustomerSerializer(queryset, many=True)
+        if customer:
+            data["customer"] = ReadOnlyCustomerSerializer(customer, many=True).data
 
         return Response(data, status=status.HTTP_200_OK)
 
@@ -123,11 +123,25 @@ class SubscriptionCreateApiView(APIView):
         plan_id = request.data.get("plan_id")
 
         try:
-            payment_data = create_razorpay_subscription(request.user, plan_id)
+            new_plan = SubscriptionPlan.objects.get(pk=plan_id)
         except SubscriptionPlan.DoesNotExist:
             return Response(
-                {"error": "Plan does not exist"}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Subscription plan is required"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # this tells us what need reducing
+        customer, employee, service = SubscriptionHelperFN.need_reducing(
+            request.user, new_plan
+        )
+
+        # it checks that the data provied by user is acceptable or not. and creates a temporary row in tpc.
+        SubscriptionHelperFN.create_temporary_plan_changes(
+            customer, employee, service, request, new_plan
+        )
+
+        try:
+            payment_data = create_razorpay_subscription(request.user, plan_id)
         except Exception as e:
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR

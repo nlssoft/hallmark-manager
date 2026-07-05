@@ -122,6 +122,9 @@ class Subscription(models.Model):
     razorpay_subscription_id = models.CharField(
         max_length=255, unique=True, null=True, blank=True
     )
+    previous_razorpay_subscription_id = models.CharField(
+        max_length=255, null=True, blank=True
+    )
     status = models.CharField(max_length=10, choices=status_choices, default="trial")
     razorpay_status = models.CharField(max_length=50, null=True, blank=True)
     trial_end = models.DateTimeField()
