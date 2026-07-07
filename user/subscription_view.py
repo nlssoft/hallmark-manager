@@ -15,14 +15,14 @@ from user.models import (
     SubscriptionPlan,
     RazorpayEvent,
 )
-from .serializers import ReadOnlyEmployeeSerializer
+from .serializers import NestedEmployeeSerializer
 from core.serializers import ServiceSerializer, ReadOnlyCustomerSerializer
-from Services.subscriptionlimitservices import SubscriptionHelperFN
+from .Services.subscriptionserviceshelpers import SubscriptionHelperFN
 from .models import Employee
 from core.models import Customer, Service
 
 
-from user.Services.subscription_service import (
+from user.Services.subcriptionservices import (
     create_razorpay_subscription,
     handle_subscription_activated,
     handle_subscription_charged,
@@ -104,7 +104,7 @@ class SubscriptionPlanPreviewApiView(APIView):
         data["bools"] = any((employee, service, customer))
 
         if employee:
-            data["employee"] = ReadOnlyEmployeeSerializer(employee, many=True).data
+            data["employee"] = NestedEmployeeSerializer(employee, many=True).data
 
         if service:
             data["service"] = ServiceSerializer(service, many=True).data

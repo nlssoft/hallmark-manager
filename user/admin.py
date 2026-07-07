@@ -16,7 +16,7 @@ from .models import (
     SubscriptionHistory,
     RazorpayEvent,
 )
-from razorpay_client import client as razorpay
+from .razorpay_client import client as razorpay
 from .filters import ExpiringSoonFilter
 
 # need to think about what to do???

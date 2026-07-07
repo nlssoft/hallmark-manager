@@ -21,13 +21,14 @@ from rest_framework_simplejwt.token_blacklist.models import (
 )
 from core.permissions import ParentAccount_Only
 from .permissions import IsSubscriptionActive
-from core.models import Customer
-from .models import User, UserOTP, Employee, SubscriptionPlan
+from core.models import Customer, CustomerAssignment
+from .models import User, UserOTP, Employee
 from .serializers import (
     VerifyEmailOTPSerializer,
     ChangeEmailOTPSerializer,
+    ReadOnlyEmployeeSerializer,
     EmployeeSerializer,
-    Sync_Employee,
+    Sync_Employee_Customer,
 )
 from .Services.emails import (
     send_otp_email_registration,
@@ -39,6 +40,7 @@ from .Services.otpfunction import (
     create_otp_for_email_change,
 )
 
+from .Services.subscriptionlimit import PlanLimitChecker
 from .Services.throttles import OTPCooldownThrottling
 from dj_rest_auth.jwt_auth import get_refresh_view
 from dj_rest_auth.views import UserDetailsView
@@ -237,8 +239,11 @@ class EmployeeMixView(
     search_fields = ["username", "customer__name", "customer__logo"]
 
     def get_serializer_class(self):
-        if self.action == "sync_employee":
-            return Sync_Employee
+        if self.action == "Sync_Employee_Customer":
+            return Sync_Employee_Customer
+        
+        if self.request.method in SAFE_METHODS:
+            return ReadOnlyEmployeeSerializer
 
         return EmployeeSerializer
 
@@ -299,14 +304,53 @@ class EmployeeMixView(
 
         return Response({"message": "Employee is unbanned."}, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=["post"], url_path="sync-employee")
-    def sync_employee(self, request, pk=None):
+    @action(detail=True, methods=["post"], url_path="sync-employee-customer")
+    def Sync_Employee_Customer(self, request, pk=None):
         employee = self.get_object()
+        owner = request.user
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         new_id = {c.id for c in serializer.validated_data["customer"]}
+
+        with transaction.atomic():
+            existing = {
+                a.id: a 
+                for a in CustomerAssignment.objects.select_for_update().filter(
+                    employee=employee
+                )
+            }
+            existing_active_id = {cid for cid, a in existing.items() if a.active }
+
+            existing_ids= set(existing)
+
+            to_deactivate = existing_active_id - new_id
+            to_reactivate = (new_id & existing_ids) - existing_active_id
+            to_create= new_id- existing_ids
+            
+            # | this is a set opretor
+            final_active_ids = to_create | to_reactivate
+            PlanLimitChecker(owner).assert_can_add_assignments(final_active_ids, exclude_employee=employee)
+
+            if to_deactivate:
+                CustomerAssignment.objects.filter(employee=employee, customer_id__in= to_deactivate).update(active=False)
+            
+            if to_reactivate:
+                CustomerAssignment.objects.filter(employee=employee, customer_id__in= to_reactivate).update(active=True)
+            
+            if to_create:
+                CustomerAssignment.objects.bulk_create(
+                    [
+                        CustomerAssignment(customer_id=cid, employee=employee, active=True)
+                        for cid in to_create
+                    ]
+                )
+            
+            return Response({"sync": len(final_active_ids)})
+
+            
+
+
 
         through = Customer.assigned_to.through
 

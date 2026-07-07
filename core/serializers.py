@@ -1,4 +1,4 @@
-from user.serializers import ReadOnlyEmployeeSerializer
+from user.serializers import NestedEmployeeSerializer
 from .models import (
     Groups,
     Customer,
@@ -13,6 +13,8 @@ from .models import (
     SnapShotRequest,
 )
 from .nestedserializer import NestedCustomerSerializer
+from user.Services.subscriptionlimit import PlanLimitChecker
+
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
@@ -187,7 +189,7 @@ class CustomerSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_surplus"
     )
     groups = NestedGroupSerializer(read_only=True, source="group")
-    employee = ReadOnlyEmployeeSerializer(
+    employee = NestedEmployeeSerializer(
         read_only=True, many=True, source="assigned_to"
     )
 
@@ -224,14 +226,22 @@ class CustomerSerializer(serializers.ModelSerializer):
 class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
-        fields = ("id", "name")
+        fields = ("id", "name", "disabled")
 
-    def validate(self, data):
-        name = data.get("name")
+
+    def validate_name(self, value):
         owner = self.context["request"].user
 
-        if Service.objects.filter(name__iexact=name, owner=owner).exists():
+        if Service.objects.filter(name__iexact=value, owner=owner).exists():
             raise ValidationError("A service with this name already exists.")
+        
+        return value
+
+    def validate(self, data):
+        user= self.context["request"].user
+
+        PlanLimitChecker(user).assert_can_add_service()
+
         return data
 
     def create(self, validated_data):

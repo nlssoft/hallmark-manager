@@ -2,6 +2,8 @@
 from .models import User, Employee, Profile, UserOTP, SubscriptionPlan, Subscription
 from core.models import Customer
 from core.nestedserializer import NestedCustomerSerializer
+from .Services.subscriptionlimit import PlanLimitChecker
+
 
 # import cls
 from dj_rest_auth.registration.serializers import RegisterSerializer
@@ -287,10 +289,6 @@ class EmployeeSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
     re_password = serializers.CharField(write_only=True)
 
-    customer = NestedCustomerSerializer(
-        read_only=True, many=True, source="customer_set"
-    )
-
     class Meta:
         model = Employee
         fields = [
@@ -315,6 +313,9 @@ class EmployeeSerializer(serializers.ModelSerializer):
             raise ValidationError({"message": "Password do not match."})
 
         attrs["parent"] = user
+        
+        PlanLimitChecker(user).assert_can_add_employee()
+
         return attrs
 
     def create(self, validated_data):
@@ -330,7 +331,29 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return employee
 
 
-class Sync_Employee(serializers.Serializer):
+class ReadOnlyEmployeeSerializer(serializers.ModelSerializer):
+    customer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Employee
+        fields = [
+            "pk",
+            "username",
+            "email",
+            "is_active",
+            "disabled",
+            "customer",
+        ]
+        read_only_fields = fields
+
+    def get_customer(self, obj):
+        assignment = getattr(obj, "active_assignment", [])
+        return NestedCustomerSerializer(
+            [a.customer for a in assignment], many=True
+        ).data
+
+
+class Sync_Employee_Customer(serializers.Serializer):
     customer = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Customer.objects.all()
     )
@@ -347,7 +370,7 @@ class Sync_Employee(serializers.Serializer):
             self.fields["customer"].queryset = Customer.objects.none()
 
 
-class ReadOnlyEmployeeSerializer(serializers.ModelSerializer):
+class NestedEmployeeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Employee
@@ -355,5 +378,7 @@ class ReadOnlyEmployeeSerializer(serializers.ModelSerializer):
             "pk",
             "username",
             "email",
+            "is_active",
+            "disabled",
         ]
-        read_only_fields = ["pk"]
+        read_only_fields = fields

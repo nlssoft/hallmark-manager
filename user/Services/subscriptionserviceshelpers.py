@@ -190,9 +190,3 @@ class SubscriptionHelperFN:
             customer__owner=user, employee__parent=user, is_active=False
         ).update(is_active=True)
 
-
-class SubscriptionLimitService:
-
-    @staticmethod
-    def can_create_employee(user):
-        tier = user.subscription.tier

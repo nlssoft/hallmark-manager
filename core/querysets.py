@@ -79,6 +79,16 @@ class CustomerQuerySet(QuerySet):
             )
         )
 
+    def visible_to(self, user):
+        owner = user.parent or user
+        if user == owner:
+            return self.filter(owner=user)
+        return self.filter(
+            owner=owner,
+            customerassignment__employee=user,
+            customerassignment__active=True
+        ).distinct()
+
 
 class RecordQuerySet(QuerySet):
 

@@ -186,8 +186,7 @@ class CustomerViewset(ModelViewSet):
             return Customer.objects.none()
 
         return (
-            Customer.objects.with_totals()
-            .filter(Q(owner=user) | Q(assigned_to=user))
+            Customer.objects.visible_to(user).with_totals()
             .select_related(
                 "group",
             )
