@@ -327,7 +327,7 @@ class PaymentNestedRecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_amount"
     )
 
-    service_id = serializers.
+    service_id = serializers.UUIDField(source="service.name", read_only=True)
     service = serializers.CharField(source="service.name", read_only=True)
 
     used = serializers.SerializerMethodField()
@@ -362,7 +362,7 @@ class ReportRecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_due"
     )
 
-    customer_id = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_id = serializers.UUIDField(source="customer.public_id", read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     customer_address = serializers.CharField(source="customer.address", read_only=True)
 
