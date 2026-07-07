@@ -19,10 +19,9 @@ from .serializers import (
     CustomerSerializer,
     ReadOnlyRecordSerializer,
     ReportRecordSerializer,
-    CreateRecordSerializer,
-    UpdateRecordSerializer,
+    WriteRecordSerializer,
     ServiceSerializer,
-    CreateRecordSerializer,
+    WriteRecordSerializer,
     ReadOnlyPaymentSerializer,
     WritePaymentSerializer,
     ReportPaymentSerializer,
@@ -92,6 +91,7 @@ class GroupsViewset(ModelViewSet):
     pagination_class = StandardPagination
     filter_backends = [SearchFilter]
     search_fields = ["name", "customer__name"]
+    lookup_field = "public_id"
 
     def get_queryset(self):
         user = getattr(self.request, "user", None)
@@ -172,6 +172,7 @@ class CustomerViewset(ModelViewSet):
     search_fields = ["name", "logo"]
     ordering_fields = ["_due", "_surplus"]
     ordering = ["name"]
+    lookup_field = "public_id"
 
     serializer_class = CustomerSerializer
 
@@ -186,7 +187,8 @@ class CustomerViewset(ModelViewSet):
             return Customer.objects.none()
 
         return (
-            Customer.objects.visible_to(user).with_totals()
+            Customer.objects.visible_to(user)
+            .with_totals()
             .select_related(
                 "group",
             )
@@ -216,6 +218,7 @@ class ServiceViewset(ModelViewSet):
     pagination_class = StandardPagination
     filter_backends = [SearchFilter]
     search_fields = ["name"]
+    lookup_field = "public_id"
 
     serializer_class = ServiceSerializer
 
@@ -240,6 +243,7 @@ class RecordViewset(ModelViewSet):
     search_fields = ["customer__name", "customer__logo"]
     ordering_fields = ["_due"]
     ordering = ["-created_at", "-pk"]
+    lookup_field = "public_id"
 
     def get_queryset(self):
         user = getattr(self.request, "user", None)
@@ -251,23 +255,20 @@ class RecordViewset(ModelViewSet):
         ):
             return Record.objects.none()
 
-        base = Record.objects.with_financials().filter(
-            Q(customer__owner=user) | Q(customer__assigned_to=user)
-        )
-
-        return base.select_related("customer", "service").prefetch_related(
-            "allocation_set",
-            "advanceusage_set",
+        return (
+            Record.objects.visible_to(user)
+            .with_financials()
+            .select_related("customer", "service")
+            .prefetch_related(
+                "allocation_set",
+                "advanceusage_set",
+            )
         )
 
     def get_serializer_class(self):
-        if self.action in ["create"]:
-            return CreateRecordSerializer
-
-        if self.action in ["update", "partial_update"]:
-            return UpdateRecordSerializer
-
-        return ReadOnlyRecordSerializer
+        if self.request.method in SAFE_METHODS:
+            return ReadOnlyRecordSerializer
+        return WriteRecordSerializer
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -293,6 +294,7 @@ class RecordViewset(ModelViewSet):
         reason = get_reason(request)
 
         PaymentService.record_rollback(record)
+
         response = super().update(request, *args, **kwargs)
         PaymentService.re_balance(record.customer, record_id)
         after = dict(
@@ -363,6 +365,7 @@ class PaymentViewset(ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_class = PaymentFilter
     search_fields = ["customer__name", "customer__logo"]
+    lookup_field = "public_id"
 
     def get_serializer_class(self):
         if self.request.method in SAFE_METHODS:
@@ -457,6 +460,7 @@ class AuditLogViewset(ReadOnlyModelViewSet):
     filterset_class = AuditLogFilter
     search_fields = ["before__customer__name", "before__customer__logo"]
     ordering_fields = ["logged_at"]
+    lookup_field = "public_id"
 
     serializer_class = ReadOnlyAuditLogSerializer
 
@@ -480,6 +484,7 @@ class RequestViewset(ModelViewSet):
     filterset_class = RequestFilter
     search_fields = ["owner__username"]
     ordering_fields = ["created_at"]
+    lookup_field = "public_id"
 
     def get_serializer_class(self, *args, **kwargs):
         if self.request.method in SAFE_METHODS:
@@ -498,7 +503,7 @@ class RequestViewset(ModelViewSet):
             return Request.objects.none()
 
         return (
-            Request.objects.filter(Q(owner__parent=user) | Q(owner=user))
+            Request.objects.visible_to(user)
             .prefetch_related(
                 Prefetch(
                     "record",
@@ -572,16 +577,16 @@ class RecordSummaryView(APIView):
         date_from, date_to = get_date_range(request)
 
         qs = (
-            Record.objects.with_financials()
-            .filter(
-                Q(customer__owner=request.user) | Q(customer__assigned_to=request.user)
-            )
+            Record.objects.visible_to(request.user)
+            .with_financials()
             .select_related("customer", "service")
             .distinct()
         )
 
         if employee_ids is not None:
-            qs = qs.filter(customer__assigned_to__pk__in=employee_ids).distinct()
+            qs = qs.assigned_to(
+                employee_ids
+            )  # this handles customer filtering based on assignments.
 
         if customer_ids is not None:
             qs = qs.filter(customer__in=customer_ids)
@@ -605,7 +610,7 @@ class RecordSummaryView(APIView):
 
             customers = defaultdict(
                 lambda: {
-                    "customer_pk": 0,
+                    "customer_id": 0,
                     "customer_name": "",
                     "customer_address": "",
                     "data": [],
@@ -618,7 +623,7 @@ class RecordSummaryView(APIView):
                     },
                     "service_totals": defaultdict(
                         lambda: {
-                            "service_pk": 0,
+                            "service_id": 0,
                             "service": "",
                             "total_pcs": 0,
                             "total_service_amount": Decimal("0.00"),
@@ -631,10 +636,10 @@ class RecordSummaryView(APIView):
             )
 
             for record in rows:
-                c = customers[record["customer_pk"]]
+                c = customers[record["customer_id"]]
 
-                if not c["customer_pk"]:
-                    c["customer_pk"] = record["customer_pk"]
+                if not c["customer_id"]:
+                    c["customer_id"] = record["customer_id"]
                     c["customer_name"] = record["customer_name"]
                     c["customer_address"] = record["customer_address"]
 
@@ -650,10 +655,10 @@ class RecordSummaryView(APIView):
                 totals["total_due"] += Decimal(record["due"])
 
                 # service totals
-                st = c["service_totals"][record["service_pk"]]
+                st = c["service_totals"][record["service_id"]]
 
-                if not st["service_pk"]:
-                    st["service_pk"] = record["service_pk"]
+                if not st["service_id"]:
+                    st["service_id"] = record["service_id"]
                     st["service"] = record["service"]
 
                 st["total_pcs"] += record["pcs"]
@@ -709,11 +714,8 @@ class PaymentSummaryView(APIView):
         date_from, date_to = get_date_range(request)
 
         qs = (
-            Payment.objects.with_balance()
-            .filter(
-                Q(customer__owner=self.request.user)
-                | Q(customer__assigned_to=self.request.user)
-            )
+            Payment.objects.visible_to(request.user)
+            .with_balance()
             .select_related("customer")
             .prefetch_related(
                 Prefetch(
@@ -729,7 +731,7 @@ class PaymentSummaryView(APIView):
         )
 
         if employee_ids is not None:
-            qs = qs.filter(customer__assigned_to__pk__in=employee_ids).distinct()
+            qs = qs.assigned_to(employee_ids)
 
         if customer_ids is not None:
             qs = qs.filter(customer__in=customer_ids)
@@ -758,7 +760,7 @@ class PaymentSummaryView(APIView):
                 for payment in rows:
                     for record in payment["records"]:
 
-                        st = service_totals[record["service_pk"]]
+                        st = service_totals[record["service_id"]]
 
                         st["service"] = record["service"]
                         st["total_pcs"] += record["pcs"]
@@ -787,7 +789,7 @@ class PaymentSummaryView(APIView):
             else:
                 customers = defaultdict(
                     lambda: {
-                        "customer_pk": 0,
+                        "customer_id": 0,
                         "customer_name": "",
                         "customer_address": "",
                         "service_totals": defaultdict(
@@ -810,11 +812,11 @@ class PaymentSummaryView(APIView):
                 )
 
                 for payment in rows:
-                    c = customers[payment["customer_pk"]]
+                    c = customers[payment["customer_id"]]
 
                     # basic info
-                    if not c["customer_pk"]:
-                        c["customer_pk"] = payment["customer_pk"]
+                    if not c["customer_id"]:
+                        c["customer_id"] = payment["customer_id"]
                         c["customer_name"] = payment["customer_name"]
                         c["customer_address"] = payment["customer_address"]
 
@@ -836,7 +838,7 @@ class PaymentSummaryView(APIView):
                     # service_totals
                     for record in payment["records"]:
 
-                        st = c["service_totals"][record["service_pk"]]
+                        st = c["service_totals"][record["service_id"]]
 
                         st["service"] = record["service"]
                         st["total_pcs"] += record["pcs"]
@@ -879,7 +881,7 @@ class PaymentSummaryView(APIView):
             else:
                 customers = defaultdict(
                     lambda: {
-                        "customer_pk": 0,
+                        "customer_id": 0,
                         "customer_name": "",
                         "customer_address": "",
                         "data": [],
@@ -895,10 +897,10 @@ class PaymentSummaryView(APIView):
                 )
 
                 for payment in rows:
-                    c = customers[payment["customer_pk"]]
+                    c = customers[payment["customer_id"]]
 
-                    if not c["customer_pk"]:
-                        c["customer_pk"] = payment["customer_pk"]
+                    if not c["customer_id"]:
+                        c["customer_id"] = payment["customer_id"]
                         c["customer_name"] = payment["customer_name"]
                         c["customer_address"] = payment["customer_address"]
 
@@ -925,3 +927,20 @@ class PaymentSummaryView(APIView):
                     },
                     status=status.HTTP_200_OK,
                 )
+
+
+class EmployeeSummaryView(APIView):
+    permission_classes = [ParentAccount_Only, IsSubscriptionActive]
+
+    def get(self, request):
+        user = request.user
+
+        revenue = (
+            user.employee.with_summary()
+            .all()
+            .values_list(
+                "pk", "username", "work_amount", "work_discount", "payment_amount"
+            )
+        )
+
+        return Response(revenue, status=status.HTTP_200_OK)

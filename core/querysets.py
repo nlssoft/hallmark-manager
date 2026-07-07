@@ -9,7 +9,6 @@ from django.db.models import (
     Subquery,
     Case,
     When,
-    Count,
 )
 from django.db.models.functions import Coalesce
 from django.apps import apps
@@ -86,7 +85,7 @@ class CustomerQuerySet(QuerySet):
         return self.filter(
             owner=owner,
             customerassignment__employee=user,
-            customerassignment__active=True
+            customerassignment__active=True,
         ).distinct()
 
 
@@ -152,6 +151,27 @@ class RecordQuerySet(QuerySet):
                 - Coalesce(F("discount"), Value(0), output_field=DecimalField())
             )
         )
+
+    def visible_to(self, user):
+        Customer = apps.get_model("core", "Customer")
+        return self.filter(customer__in=Customer.objects.visible_to(user))
+
+    def assigned_to(self, ids):
+        Customer = apps.get_model("core", "Customer")
+        return self.filter(
+            customer__in=Customer.objects.filter(
+                customerassignment__employee_id__in=ids, customerassignment__active=True
+            )
+        ).distinct()
+
+    def for_employee(self, id):
+        Customer = apps.get_model("core", "Customer")
+        return self.filter(
+            Customer.objects.filter(
+                customer__customerassignment__employee=id,
+                customerassignment__active=True,
+            )
+        ).distinct()
 
 
 class PaymentQuerySet(QuerySet):
@@ -242,6 +262,27 @@ class PaymentQuerySet(QuerySet):
             )
         )
 
+    def visible_to(self, user):
+        Customer = apps.get_model("core", "Customer")
+        return self.filter(customer__in=Customer.objects.visible_to(user))
+
+    def assigned_to(self, ids):
+        Customer = apps.get_model("core", "Customer")
+        return self.filter(
+            customer__in=Customer.objects.filter(
+                customerassignment__employee_id__in=ids, customerassignment__active=True
+            )
+        ).distinct()
+
+    def for_employee(self, id):
+        Customer = apps.get_model("core", "Customer")
+        return self.filter(
+            Customer.objects.filter(
+                customer__customerassignment__employee=id,
+                customerassignment__active=True,
+            )
+        ).distinct()
+
 
 class AdvanceQuerySet(QuerySet):
     def with_availability(self):
@@ -250,3 +291,10 @@ class AdvanceQuerySet(QuerySet):
                 Sum("advanceusage__amount"), Value(0), output_field=DecimalField()
             )
         ).annotate(_available=F("total_amount") - F("_used_already"))
+
+
+class RequestQuerySet(QuerySet):
+
+    def visible_to(self, user):
+        Customer = apps.get_model("core", "Customer")
+        return self.filter(customer__in=Customer.objects.visible_to(user))

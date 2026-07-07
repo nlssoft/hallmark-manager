@@ -11,12 +11,14 @@ from .querysets import (
     PaymentQuerySet,
     AdvanceQuerySet,
     CustomerQuerySet,
+    RequestQuerySet,
 )
+from common.models import UUIDModelMixin
 
 user = get_user_model()
 
 
-class Groups(models.Model):
+class Groups(UUIDModelMixin, models.Model):
     owner = models.ForeignKey(
         user, on_delete=models.CASCADE, related_name="owned_groups"
     )
@@ -31,7 +33,7 @@ class Groups(models.Model):
         return f"Name: {self.name} Description: {self.description}"
 
 
-class Customer(models.Model):
+class Customer(UUIDModelMixin, models.Model):
 
     objects = CustomerQuerySet.as_manager()
 
@@ -118,7 +120,7 @@ class CustomerAssignment(models.Model):
         unique_together = ("customer", "employee")
 
 
-class Service(models.Model):
+class Service(UUIDModelMixin, models.Model):
     owner = models.ForeignKey(user, on_delete=models.CASCADE, related_name="service")
     name = models.CharField(max_length=255)
     disabled = models.BooleanField(default=False)
@@ -149,7 +151,7 @@ class GroupRate(models.Model):
         return f"{self.group} {self.service} @{self.rate} "
 
 
-class Record(models.Model):
+class Record(UUIDModelMixin, models.Model):
 
     objects = RecordQuerySet.as_manager()
 
@@ -201,7 +203,7 @@ class Record(models.Model):
         super().save(*args, **kwargs)
 
 
-class Payment(models.Model):
+class Payment(UUIDModelMixin, models.Model):
 
     objects = PaymentQuerySet.as_manager()
 
@@ -275,7 +277,7 @@ class AdvanceUsage(models.Model):
             Amount: {self.amount} Date: {self.created_at}"
 
 
-class AuditLog(models.Model):
+class AuditLog(UUIDModelMixin, models.Model):
     model_choice = [("r", "Record"), ("p", "Payment")]
 
     user = models.ForeignKey(user, on_delete=models.CASCADE)
@@ -294,7 +296,7 @@ class AuditLog(models.Model):
             Logged_at: {self.logged_at}, Status:{self.status}"
 
 
-class Request(models.Model):
+class Request(UUIDModelMixin, models.Model):
     owner = models.ForeignKey(user, on_delete=models.CASCADE)
     record = models.ManyToManyField(Record)
     created_at = models.DateField(auto_now_add=True)
@@ -304,6 +306,8 @@ class Request(models.Model):
         choices=[("p", "PENDING"), ("a", "APPROVED"), ("r", "REJECTED")],
         default="p",
     )
+
+    objects = RequestQuerySet.as_manager()
 
     class Meta:
         ordering = ["-pk"]

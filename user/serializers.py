@@ -4,7 +4,6 @@ from core.models import Customer
 from core.nestedserializer import NestedCustomerSerializer
 from .Services.subscriptionlimit import PlanLimitChecker
 
-
 # import cls
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from dj_rest_auth.serializers import JWTSerializer, UserDetailsSerializer
@@ -313,7 +312,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             raise ValidationError({"message": "Password do not match."})
 
         attrs["parent"] = user
-        
+
         PlanLimitChecker(user).assert_can_add_employee()
 
         return attrs

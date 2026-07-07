@@ -1,10 +1,9 @@
-from typing import Iterable
-
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 from django.conf import settings
 from .managers import EmployeeManager, CustomUserManager
+from common.models import UUIDModelMixin
 
 
 class User(AbstractUser):
@@ -20,7 +19,7 @@ class User(AbstractUser):
         related_name="employee",
     )
 
-    manager = CustomUserManager()
+    objects = CustomUserManager()
 
     def save(self, *args, **kwargs):
         """

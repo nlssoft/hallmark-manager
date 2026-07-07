@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from dj_rest_auth.registration.views import RegisterView
 from rest_framework import generics, status
@@ -241,7 +242,7 @@ class EmployeeMixView(
     def get_serializer_class(self):
         if self.action == "Sync_Employee_Customer":
             return Sync_Employee_Customer
-        
+
         if self.request.method in SAFE_METHODS:
             return ReadOnlyEmployeeSerializer
 
@@ -259,7 +260,15 @@ class EmployeeMixView(
 
         return (
             Employee.objects.filter(parent=user)
-            .prefetch_related("customer_set")
+            .prefetch_related(
+                Prefetch(
+                    "customerassignment_set",
+                    queryset=CustomerAssignment.objects.filter(
+                        active=True
+                    ).select_related("customer"),
+                    to_attr="active_assignment",
+                )
+            )
             .order_by("id")
         )
 
@@ -315,42 +324,46 @@ class EmployeeMixView(
 
         with transaction.atomic():
             existing = {
-                a.id: a 
+                a.id: a
                 for a in CustomerAssignment.objects.select_for_update().filter(
                     employee=employee
                 )
             }
-            existing_active_id = {cid for cid, a in existing.items() if a.active }
+            existing_active_id = {cid for cid, a in existing.items() if a.active}
 
-            existing_ids= set(existing)
+            existing_ids = set(existing)
 
             to_deactivate = existing_active_id - new_id
             to_reactivate = (new_id & existing_ids) - existing_active_id
-            to_create= new_id- existing_ids
-            
+            to_create = new_id - existing_ids
+
             # | this is a set opretor
             final_active_ids = to_create | to_reactivate
-            PlanLimitChecker(owner).assert_can_add_assignments(final_active_ids, exclude_employee=employee)
+            PlanLimitChecker(owner).assert_can_add_assignments(
+                final_active_ids, exclude_employee=employee
+            )
 
             if to_deactivate:
-                CustomerAssignment.objects.filter(employee=employee, customer_id__in= to_deactivate).update(active=False)
-            
+                CustomerAssignment.objects.filter(
+                    employee=employee, customer_id__in=to_deactivate
+                ).update(active=False)
+
             if to_reactivate:
-                CustomerAssignment.objects.filter(employee=employee, customer_id__in= to_reactivate).update(active=True)
-            
+                CustomerAssignment.objects.filter(
+                    employee=employee, customer_id__in=to_reactivate
+                ).update(active=True)
+
             if to_create:
                 CustomerAssignment.objects.bulk_create(
                     [
-                        CustomerAssignment(customer_id=cid, employee=employee, active=True)
+                        CustomerAssignment(
+                            customer_id=cid, employee=employee, active=True
+                        )
                         for cid in to_create
                     ]
                 )
-            
+
             return Response({"sync": len(final_active_ids)})
-
-            
-
-
 
         through = Customer.assigned_to.through
 

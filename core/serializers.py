@@ -6,8 +6,6 @@ from .models import (
     GroupRate,
     Record,
     Payment,
-    Advance,
-    AdvanceUsage,
     AuditLog,
     Request,
     SnapShotRequest,
@@ -15,9 +13,11 @@ from .models import (
 from .nestedserializer import NestedCustomerSerializer
 from user.Services.subscriptionlimit import PlanLimitChecker
 
+
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Q
 from collections import OrderedDict
 from decimal import Decimal
 from collections import defaultdict
@@ -28,7 +28,7 @@ from django.utils import timezone
 
 # Read
 class NestedGroupRateSerializer(serializers.Serializer):
-    service_id = serializers.IntegerField(source="service.id")
+    service_public_id = serializers.UUIDField(source="service.public_id")
     service_name = serializers.CharField(source="service.name")
     service_rate = serializers.DecimalField(
         source="rate", max_digits=10, decimal_places=2
@@ -36,7 +36,7 @@ class NestedGroupRateSerializer(serializers.Serializer):
 
 
 class ReadOnlyGroupSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
+    public_id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(
         max_length=255, allow_blank=True, allow_null=True, required=False
@@ -50,7 +50,7 @@ class ReadOnlyGroupSerializer(serializers.Serializer):
 
 
 class NestedGroupSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
+    public_id = serializers.UUIDField(read_only=True)
     name = serializers.CharField(max_length=255)
     description = serializers.CharField(
         max_length=255, allow_blank=True, allow_null=True, required=False
@@ -62,13 +62,13 @@ class NestedGroupSerializer(serializers.Serializer):
 
 # Write
 class WriteGroupSerializer(serializers.Serializer):
-    id = serializers.IntegerField(read_only=True)
-    name = serializers.CharField(max_length=255)
+    public_id = serializers.UUIDField(read_only=True)
     description = serializers.CharField(
         max_length=255, allow_blank=True, allow_null=True, required=False
     )  # keep or not keep
-    service = serializers.PrimaryKeyRelatedField(
-        queryset=Service.objects.all(),
+
+    service = serializers.SlugRelatedField(
+        slug_field="public_id",
         required=False,
         allow_null=True,
     )
@@ -79,16 +79,26 @@ class WriteGroupSerializer(serializers.Serializer):
         allow_null=True,
     )
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def get_fields(self):
+        fields = super().get_fields()
 
         request = self.context.get("request")
-        user = getattr(request, "user", None)
+        if not request:
+            return
+        user = request.user
 
-        if user and user.is_authenticated:
-            self.fields["service"].queryset = Service.objects.filter(owner=user)
-        else:
-            self.fields["service"].queryset = Service.objects.none()
+        # removes disabled
+        qs = Service.objects.filter(owner=user, disabled=False)
+
+        # allows the service pk that the instance has even it its block by disabled
+        if self.instance and self.instance.service.disabled:
+            qs = Service.objects.filter(owner=user).filter(
+                Q(disabled=False) | self.instance.service_id
+            )
+
+        fields["service"].queryset = qs
+
+        return fields
 
     def validate(self, attrs):
         service = attrs.get("service")
@@ -125,11 +135,13 @@ class WriteGroupSerializer(serializers.Serializer):
 
 # Action
 class RemoveServiceGroupSerializer(serializers.ModelSerializer):
-    service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.all())
+    service = serializers.SlugRelatedField(
+        slug_field="public_id", queryset=Service.objects.all()
+    )
 
     class Meta:
         model = GroupRate
-        fields = ("id", "service")
+        fields = "service"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -144,8 +156,8 @@ class RemoveServiceGroupSerializer(serializers.ModelSerializer):
 
 
 class sync_customerSerializer(serializers.Serializer):
-    customer = serializers.PrimaryKeyRelatedField(
-        queryset=Customer.objects.all(), many=True
+    customer = serializers.SlugRelatedField(
+        slug_field="public_id", queryset=Customer.objects.all(), many=True
     )
 
     def __init__(self, *args, **kwargs):
@@ -169,7 +181,7 @@ class ReadOnlyCustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = (
-            "id",
+            "public_id",
             "logo",
             "name",
             "address",
@@ -189,14 +201,12 @@ class CustomerSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_surplus"
     )
     groups = NestedGroupSerializer(read_only=True, source="group")
-    employee = NestedEmployeeSerializer(
-        read_only=True, many=True, source="assigned_to"
-    )
+    employee = NestedEmployeeSerializer(read_only=True, many=True, source="assigned_to")
 
     class Meta:
         model = Customer
         fields = (
-            "id",
+            "public_id",
             "name",
             "number",
             "email",
@@ -226,19 +236,19 @@ class CustomerSerializer(serializers.ModelSerializer):
 class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
-        fields = ("id", "name", "disabled")
-
+        fields = ("public_id", "name", "disabled")
+        read_only_fields = ["public_id", "disabled"]
 
     def validate_name(self, value):
         owner = self.context["request"].user
 
         if Service.objects.filter(name__iexact=value, owner=owner).exists():
             raise ValidationError("A service with this name already exists.")
-        
+
         return value
 
     def validate(self, data):
-        user= self.context["request"].user
+        user = self.context["request"].user
 
         PlanLimitChecker(user).assert_can_add_service()
 
@@ -269,7 +279,7 @@ class ReadOnlyRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = Record
         fields = (
-            "id",
+            "public_id",
             "customer",
             "service",
             "pcs",
@@ -317,7 +327,7 @@ class PaymentNestedRecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_amount"
     )
 
-    service_pk = serializers.IntegerField(source="service.id", read_only=True)
+    service_id = serializers.
     service = serializers.CharField(source="service.name", read_only=True)
 
     used = serializers.SerializerMethodField()
@@ -326,7 +336,7 @@ class PaymentNestedRecordSerializer(serializers.ModelSerializer):
         model = Record
         fields = (
             "id",
-            "service_pk",
+            "service_id",
             "service",
             "pcs",
             "rate",
@@ -352,21 +362,21 @@ class ReportRecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_due"
     )
 
-    customer_pk = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_id = serializers.IntegerField(source="customer.pk", read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     customer_address = serializers.CharField(source="customer.address", read_only=True)
 
-    service_pk = serializers.IntegerField(source="service.id", read_only=True)
+    service_id = serializers.UUIDField(source="service.public_id", read_only=True)
     service = serializers.CharField(source="service.name", read_only=True)
 
     class Meta:
         model = Record
         fields = (
             "id",
-            "customer_pk",
+            "customer_id",
             "customer_name",
             "customer_address",
-            "service_pk",
+            "service_id",
             "service",
             "pcs",
             "created_at",
@@ -380,7 +390,7 @@ class ReportRecordSerializer(serializers.ModelSerializer):
 
 
 # Write
-class CreateRecordSerializer(serializers.ModelSerializer):
+class WriteRecordSerializer(serializers.ModelSerializer):
     pay = serializers.BooleanField(write_only=True, required=False, default=False)
 
     class Meta:
@@ -397,16 +407,55 @@ class CreateRecordSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ["id"]
 
+    def get_fields(self):
+        """
+        at create and update show only filtered disabled = Fasle  qs
+        let update happen
+        """
+        fields = super().get_fields()
+
+        request = self.context.get("request")
+        if not request:
+            return fields
+
+        owner = request.user.parent or request.user
+
+        # removes disabled
+        qs = Service.objects.filter(owner=owner, disabled=False)
+
+        # allows the service pk that the instance has even it its block by disabled
+        if self.instance and self.instance.service.disabled:
+            qs = Service.objects.filter(owner=owner).filter(
+                Q(disabled=False) | Q(pk=self.instance.service_id)
+            )
+
+        fields["service"].queryset = qs
+
+        return fields
+
     def validate_created_at(self, value):
         if value > timezone.now():
             raise ValidationError("Record cannot be created in the future.")
         return value
 
     def validate(self, attrs):
-        customer = attrs.get("customer")
-        service = attrs.get("service")
+        instance = self.instance
 
-        if not attrs.get("rate"):
+        customer = attrs.get("customer")
+        created_at = attrs.get("created_at")
+
+        if instance:
+            pay = attrs.pop("pay", False)
+            customer = customer or instance.customer
+            created_at = created_at or instance.created_at
+
+        service = attrs.get("service", instance.service if instance else None)
+        rate = attrs.get("rate", instance.rate if instance else 0)
+        pcs = attrs.get("pcs", instance.pcs if instance else 0)
+        discount = attrs.get("discount", instance.discount if instance else 0)
+
+        # rate exists
+        if not rate:
             exists = GroupRate.objects.filter(
                 group=customer.group,
                 service=service,
@@ -415,38 +464,16 @@ class CreateRecordSerializer(serializers.ModelSerializer):
             if not exists:
                 raise ValidationError("No rate defined for this service.")
 
-        rate = attrs.get("rate", 0)
-        pcs = attrs.get("pcs", 0)
-        discount = attrs.get("discount", 0)
-
+        # discount < amount
         amount = rate * pcs
-
         if discount > amount:
             raise ValidationError("Discount cannot be greater then amount.")
 
-        return attrs
-
-
-class UpdateRecordSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Record
-        fields = (
-            "id",
-            "customer",
-            "service",
-            "pcs",
-            "created_at",
-            "rate",
-            "discount",
-        )
-        read_only_fields = ["id"]
-
-    def validate(self, attrs):
-        if self.instance and "customer" in attrs:
+        # after transacation customer and date cannot be updated.
+        if instance:
             if (
-                self.instance.customer != attrs["customer"]
-                or self.instance.created_at.date() != attrs["created_at"].date()
+                customer != instance.customer
+                or created_at.date() != instance.created_at.date()
             ):
                 has_transaction = (
                     self.instance.advanceusage_set.exists()
@@ -460,15 +487,6 @@ class UpdateRecordSerializer(serializers.ModelSerializer):
                             )
                         }
                     )
-
-        rate = attrs.get("rate", self.instance.rate)
-        pcs = attrs.get("pcs", self.instance.pcs)
-        discount = attrs.get("discount", self.instance.discount)
-
-        amount = rate * pcs
-
-        if discount > amount:
-            raise ValidationError("Discount cannot be greater then amount.")
 
         return attrs
 
@@ -536,7 +554,7 @@ class ReadOnlyPaymentSerializer(BasePaymentSerializer):
 
 
 class ReportPaymentSerializer(BasePaymentSerializer):
-    customer_pk = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_id = serializers.IntegerField(source="customer.pk", read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     customer_address = serializers.CharField(source="customer.address", read_only=True)
 
@@ -550,7 +568,7 @@ class ReportPaymentSerializer(BasePaymentSerializer):
     class Meta(BasePaymentSerializer.Meta):
         model = Payment
         fields = (
-            "customer_pk",
+            "customer_id",
             "customer_name",
             "customer_address",
             "id",
@@ -565,7 +583,7 @@ class ReportPaymentSerializer(BasePaymentSerializer):
 
 
 class ReportPaymentOnlySerializer(serializers.ModelSerializer):
-    customer_pk = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_id = serializers.UUIDField(source="customer.public_id", read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     customer_address = serializers.CharField(source="customer.address", read_only=True)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
@@ -579,7 +597,7 @@ class ReportPaymentOnlySerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = (
-            "customer_pk",
+            "customer_id",
             "customer_name",
             "customer_address",
             "id",
