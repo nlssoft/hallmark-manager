@@ -10,6 +10,7 @@ from .models import (
     Request,
     SnapShotRequest,
 )
+from user.models import Employee
 from .nestedserializer import NestedCustomerSerializer
 from user.Services.subscriptionlimit import PlanLimitChecker
 
@@ -28,7 +29,7 @@ from django.utils import timezone
 
 # Read
 class NestedGroupRateSerializer(serializers.Serializer):
-    service_public_id = serializers.UUIDField(source="service.public_id")
+    service_id = serializers.UUIDField(source="service.public_id")
     service_name = serializers.CharField(source="service.name")
     service_rate = serializers.DecimalField(
         source="rate", max_digits=10, decimal_places=2
@@ -69,6 +70,7 @@ class WriteGroupSerializer(serializers.Serializer):
 
     service = serializers.SlugRelatedField(
         slug_field="public_id",
+        queryset= Service.objects.all(),
         required=False,
         allow_null=True,
     )
@@ -83,9 +85,11 @@ class WriteGroupSerializer(serializers.Serializer):
         fields = super().get_fields()
 
         request = self.context.get("request")
-        if not request:
-            return
-        user = request.user
+        user = getattr(request, "user", None)
+
+        if not user or not user.is_authenticated:
+            fields["service"].queryset = Service.objects.none()
+            return fields
 
         # removes disabled
         qs = Service.objects.filter(owner=user, disabled=False)
@@ -99,6 +103,7 @@ class WriteGroupSerializer(serializers.Serializer):
         fields["service"].queryset = qs
 
         return fields
+
 
     def validate(self, attrs):
         service = attrs.get("service")
@@ -177,6 +182,11 @@ class sync_customerSerializer(serializers.Serializer):
 
 # Read
 class ReadOnlyCustomerSerializer(serializers.ModelSerializer):
+    assigned_to= serializers.SlugRelatedField(
+        slug_field="public_id",
+        many=True,
+        read_only=True
+    )
 
     class Meta:
         model = Customer
@@ -308,7 +318,7 @@ class NestedWithOutCustomerRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = Record
         fields = (
-            "id",
+            "public_id",
             "service",
             "pcs",
             "created_at",
@@ -327,7 +337,7 @@ class PaymentNestedRecordSerializer(serializers.ModelSerializer):
         max_digits=10, decimal_places=2, read_only=True, source="_amount"
     )
 
-    service_id = serializers.UUIDField(source="service.name", read_only=True)
+    service_id = serializers.UUIDField(source="service.public_id", read_only=True)
     service = serializers.CharField(source="service.name", read_only=True)
 
     used = serializers.SerializerMethodField()
@@ -335,7 +345,7 @@ class PaymentNestedRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = Record
         fields = (
-            "id",
+            "public_id",
             "service_id",
             "service",
             "pcs",
@@ -372,7 +382,7 @@ class ReportRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = Record
         fields = (
-            "id",
+            "public_id",
             "customer_id",
             "customer_name",
             "customer_address",
@@ -392,11 +402,19 @@ class ReportRecordSerializer(serializers.ModelSerializer):
 # Write
 class WriteRecordSerializer(serializers.ModelSerializer):
     pay = serializers.BooleanField(write_only=True, required=False, default=False)
+    customer = serializers.SlugRelatedField(
+        slug_field="public_id",
+        queryset=Customer.objects.all(),
+    )
+    service = serializers.SlugRelatedField(
+        slug_field="public_id",
+        queryset=Service.objects.all(),
+    )
 
     class Meta:
         model = Record
         fields = (
-            "id",
+            "public_id",
             "customer",
             "service",
             "pcs",
@@ -405,7 +423,7 @@ class WriteRecordSerializer(serializers.ModelSerializer):
             "discount",
             "pay",
         )
-        read_only_fields = ["id"]
+        read_only_fields = ["public_id"]
 
     def get_fields(self):
         """
@@ -415,10 +433,15 @@ class WriteRecordSerializer(serializers.ModelSerializer):
         fields = super().get_fields()
 
         request = self.context.get("request")
-        if not request:
+        
+        user = getattr(request, "user", None)
+
+        if not user or not user.is_authenticated:
+            fields["customer"].queryset = Customer.objects.none()
+            fields["service"].queryset = Service.objects.none()
             return fields
 
-        owner = request.user.parent or request.user
+        owner = user.parent or user
 
         # removes disabled
         qs = Service.objects.filter(owner=owner, disabled=False)
@@ -541,7 +564,7 @@ class ReadOnlyPaymentSerializer(BasePaymentSerializer):
     class Meta(BasePaymentSerializer.Meta):
         model = Payment
         fields = (
-            "id",
+            "public_id",
             "customer",
             "mode",
             "amount",
@@ -554,7 +577,7 @@ class ReadOnlyPaymentSerializer(BasePaymentSerializer):
 
 
 class ReportPaymentSerializer(BasePaymentSerializer):
-    customer_id = serializers.IntegerField(source="customer.pk", read_only=True)
+    customer_id = serializers.UUIDField(source="customer.public_id", read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     customer_address = serializers.CharField(source="customer.address", read_only=True)
 
@@ -571,7 +594,7 @@ class ReportPaymentSerializer(BasePaymentSerializer):
             "customer_id",
             "customer_name",
             "customer_address",
-            "id",
+            "public_id",
             "mode",
             "amount",
             "created_at",
@@ -586,6 +609,7 @@ class ReportPaymentOnlySerializer(serializers.ModelSerializer):
     customer_id = serializers.UUIDField(source="customer.public_id", read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     customer_address = serializers.CharField(source="customer.address", read_only=True)
+
     amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     used = serializers.DecimalField(
         max_digits=10, decimal_places=2, source="_used", read_only=True
@@ -600,7 +624,7 @@ class ReportPaymentOnlySerializer(serializers.ModelSerializer):
             "customer_id",
             "customer_name",
             "customer_address",
-            "id",
+            "public_id",
             "mode",
             "amount",
             "created_at",
@@ -613,11 +637,15 @@ class ReportPaymentOnlySerializer(serializers.ModelSerializer):
 # write
 class WritePaymentSerializer(serializers.ModelSerializer):
     image = CloudInaryImageField(allow_null=True, required=False)
+    customer = serializers.SlugRelatedField(
+        slug_field="public_id",
+        queryset=Customer.objects.all(),
+    )
 
     class Meta:
         model = Payment
         fields = (
-            "id",
+            "public_id",
             "customer",
             "mode",
             "amount",
@@ -644,7 +672,7 @@ class WritePaymentSerializer(serializers.ModelSerializer):
 class ReadOnlyAuditLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = AuditLog
-        fields = ("id", "model", "action", "before", "after", "logged_at", "reason")
+        fields = ("public_id", "model", "action", "before", "after", "logged_at", "reason")
         read_only_fields = fields
 
 
@@ -659,7 +687,7 @@ class ReadOnlyRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Request
-        fields = ("id", "record", "total_amount", "created_at", "status")
+        fields = ("public_id", "record", "total_amount", "created_at", "status")
         read_only_fields = fields
 
     def get_record(self, obj):
@@ -726,13 +754,13 @@ class ReadOnlyRequestSerializer(serializers.ModelSerializer):
 # Write
 class WriteRequestSerializer(serializers.ModelSerializer):
     record = serializers.ListField(
-        child=serializers.IntegerField(), write_only=True, allow_empty=False
+        child=serializers.UUIDField(), write_only=True, allow_empty=False
     )
 
     class Meta:
         model = Request
-        fields = ("id", "record")
-        read_only_fields = ["id"]
+        fields = ("public_id", "record")
+        read_only_fields = ["public_id"]
 
     # here records are just a convinet name for value
     def validate_record(self, ids):
@@ -762,7 +790,7 @@ class WriteRequestSerializer(serializers.ModelSerializer):
 
         records = list(
             Record.objects.with_financials()
-            .filter(pk__in=ids)
+            .filter(public_id__in=ids)
             .filter(customer__assigned_to=user)
             .filter(_due__gt=Decimal("0.00"))
             .exclude(pk__in=pending_record_ids)

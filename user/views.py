@@ -141,6 +141,7 @@ class ResendVerifyEmailOTPView(APIView):
 
 
 class CustomUserDetailView(UserDetailsView):
+    
 
     def get_object(self):
         return User.objects.select_related(
@@ -238,6 +239,7 @@ class EmployeeMixView(
     permission_classes = [ParentAccount_Only, IsSubscriptionActive]
     filter_backends = [SearchFilter]
     search_fields = ["username", "customer__name", "customer__logo"]
+    lookup_field ="public_id"
 
     def get_serializer_class(self):
         if self.action == "Sync_Employee_Customer":
@@ -289,7 +291,7 @@ class EmployeeMixView(
             )
 
     @action(detail=True, methods=["post"])
-    def ban(self, request, pk=None):
+    def ban(self, request, public_id=None):
         employee = self.get_object()
 
         employee.disabled = True
@@ -305,7 +307,7 @@ class EmployeeMixView(
         return Response({"message": "Employee banned."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
-    def unban(self, request, pk=None):
+    def unban(self, request, public_id=None):
         employee = self.get_object()
 
         employee.disabled = False
@@ -314,7 +316,7 @@ class EmployeeMixView(
         return Response({"message": "Employee is unbanned."}, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"], url_path="sync-employee-customer")
-    def Sync_Employee_Customer(self, request, pk=None):
+    def Sync_Employee_Customer(self, request, public_id=None):
         employee = self.get_object()
         owner = request.user
 

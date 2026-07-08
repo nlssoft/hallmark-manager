@@ -128,7 +128,7 @@ class GroupsViewset(ModelViewSet):
         return WriteGroupSerializer
 
     @action(detail=True, methods=["post"], url_path="remove-service")
-    def remove_service(self, request, pk=None):
+    def remove_service(self, request, public_id=None):
         group = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -148,7 +148,7 @@ class GroupsViewset(ModelViewSet):
             )
 
     @action(detail=True, methods=["post"], url_path="sync-members")
-    def sync_customer(self, request, pk=None):
+    def sync_customer(self, request, public_id=None):
         group = self.get_object()
 
         serializer = self.get_serializer(data=request.data)
@@ -334,7 +334,7 @@ class RecordViewset(ModelViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"])
-    def requestable(self, request, pk=None):
+    def requestable(self, request, public_id=None):
         queryset = (
             self.get_queryset()
             .filter(_due__gt=0)
@@ -520,7 +520,7 @@ class RequestViewset(ModelViewSet):
 
     @transaction.atomic()
     @action(detail=True, methods=["post"])
-    def approve(self, request, pk=None):
+    def approve(self, request, public_id=None):
         obj = self.get_object()
 
         RequestService.prune(obj)
@@ -540,7 +540,7 @@ class RequestViewset(ModelViewSet):
 
     @transaction.atomic()
     @action(detail=True, methods=["post"])
-    def reject(self, request, pk=None):
+    def reject(self, request, public_id=None):
         obj = self.get_object()
         RequestService.prune(obj)
 
@@ -589,7 +589,7 @@ class RecordSummaryView(APIView):
             )  # this handles customer filtering based on assignments.
 
         if customer_ids is not None:
-            qs = qs.filter(customer__in=customer_ids)
+            qs = qs.filter(customer__public_id__in=customer_ids)
         if date_from is not None:
             qs = qs.filter(created_at__date__gte=date_from)
         if date_to is not None:
@@ -734,7 +734,7 @@ class PaymentSummaryView(APIView):
             qs = qs.assigned_to(employee_ids)
 
         if customer_ids is not None:
-            qs = qs.filter(customer__in=customer_ids)
+            qs = qs.filter(customer__public_id__in=customer_ids)
         if date_from is not None:
             qs = qs.filter(created_at__date__gte=date_from)
         if date_to is not None:

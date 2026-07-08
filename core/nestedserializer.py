@@ -10,7 +10,7 @@ class NestedCustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = (
-            "id",
+            "public_id",
             "logo",
             "name",
             "address",

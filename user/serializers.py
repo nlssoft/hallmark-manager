@@ -175,7 +175,7 @@ class UserSerializer(UserDetailsSerializer):
 
     class Meta(UserDetailsSerializer.Meta):
         fields = (
-            "pk",
+            "public_id",
             "username",
             "email",
             "profile",
@@ -291,14 +291,13 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            "pk",
+            "public_id",
             "username",
             "password",
             "re_password",
             "email",
-            "customer",
         ]
-        read_only_fields = ["pk"]
+        read_only_fields = ["public_id"]
 
     def validate(self, attrs):
         password = attrs.get("password", None)
@@ -336,7 +335,7 @@ class ReadOnlyEmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            "pk",
+            "public_id",
             "username",
             "email",
             "is_active",
@@ -353,7 +352,8 @@ class ReadOnlyEmployeeSerializer(serializers.ModelSerializer):
 
 
 class Sync_Employee_Customer(serializers.Serializer):
-    customer = serializers.PrimaryKeyRelatedField(
+    customer = serializers.SlugRelatedField(
+        slug_field="public_id",
         many=True, queryset=Customer.objects.all()
     )
 
@@ -374,7 +374,7 @@ class NestedEmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            "pk",
+            "public_id",
             "username",
             "email",
             "is_active",

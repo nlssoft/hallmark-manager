@@ -41,7 +41,7 @@ class SubscriptionPlanApiView(APIView):
 
         data = [
             {
-                "pk": p.pk,
+                "public_id": p.public_id,
                 "tier": p.tier,
                 "tier_display": p.get_tier_display(),
                 "period": p.period,
@@ -66,7 +66,7 @@ class SubscriptionPlanPreviewApiView(APIView):
         plan_id = request.data.get("plan_id")
 
         try:
-            new_plan = SubscriptionPlan.objects.get(pk=plan_id)
+            new_plan = SubscriptionPlan.objects.get(public_id=plan_id)
         except SubscriptionPlan.DoesNotExist:
             return Response(
                 {"error": "Subscription plan is required"},
@@ -74,7 +74,7 @@ class SubscriptionPlanPreviewApiView(APIView):
             )
 
         data["subscription_plan"] = {
-            "pk": new_plan.pk,
+            "public_id": new_plan.public_id,
             "tier": new_plan.tier,
             "tier_display": new_plan.get_tier_display(),
             "period": new_plan.period,
@@ -88,20 +88,18 @@ class SubscriptionPlanPreviewApiView(APIView):
         # Upgrade
         if new_plan.tier == "gold":
 
-            data["employee"] = list(
-                Employee.objects.filter(parent=user, is_active=False)
-            )
-            data["service"] = list(Service.objects.filter(owner=user, disabled=True))
-            data["customer"] = list(
-                Customer.objects.filter(owner=user, active=False).prefetch_related(
-                    "assigned_to"
-                )
-            )
-
+            employee = Employee.objects.filter(parent=user, is_active=False)
+            service= Service.objects.filter(owner=user, disabled=True)
+            customer =  Customer.objects.filter(
+                                    customerassignment__employee__in=user.employee.all(),
+                                    customerassignment__active=False,
+                                ).distinct()
+            
         # DownGrade
-        customer, employee, service = SubscriptionHelperFN.need_reducing(user, new_plan)
+        else:
+            customer, employee, service = SubscriptionHelperFN.need_reducing(user, new_plan)
 
-        data["bools"] = any((employee, service, customer))
+            data["bools"] = any((employee, service, customer))
 
         if employee:
             data["employee"] = NestedEmployeeSerializer(employee, many=True).data
@@ -123,7 +121,7 @@ class SubscriptionCreateApiView(APIView):
         plan_id = request.data.get("plan_id")
 
         try:
-            new_plan = SubscriptionPlan.objects.get(pk=plan_id)
+            new_plan = SubscriptionPlan.objects.get(public_id=plan_id)
         except SubscriptionPlan.DoesNotExist:
             return Response(
                 {"error": "Subscription plan is required"},

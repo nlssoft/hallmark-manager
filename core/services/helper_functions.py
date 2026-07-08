@@ -2,6 +2,7 @@ from rest_framework.exceptions import ValidationError
 from django.utils.dateparse import parse_date
 from user.models import Employee, Profile
 from django.db.models import Q
+import uuid
 
 # def get_reason(request):
 #     reason = request.query_params.get("reason", "").strip() or None
@@ -36,27 +37,49 @@ def get_customer_ids(request):
 
     if not raw:
         return None
+    
+    customer_ids = []
 
-    return [
-        int(customer_id)
-        for customer_id in raw.split(",")
-        if customer_id.strip().isdigit()
-    ]
+    for customer_id in raw.split(","):
+        customer_id = customer_id.strip()
 
+        try:
+            customer_ids.append(uuid.UUID(customer_id))
+        except ValueError:
+            continue
+
+    return customer_ids
+
+
+
+
+import uuid
 
 def get_employee_id(request):
-
     raw = request.query_params.get("employee_ids")
 
     if not raw:
         return None
 
-    ids = [int(id) for id in raw.split(",") if id.strip().isdigit()]
+    ids = []
 
-    employee = Employee.objects.filter(pk__in=ids, parent=request.user)
+    for employee_id in raw.split(","):
+        employee_id = employee_id.strip()
 
-    if employee.count() != len(ids):
-        raise ValidationError("One  or more Employee not found.")
+        try:
+            ids.append(uuid.UUID(employee_id))
+        except ValueError:
+            raise ValidationError(f"{employee_id} is not a valid employee ID.")
+
+    ids = list(dict.fromkeys(ids))
+
+    employees = Employee.objects.filter(
+        public_id__in=ids,
+        parent=request.user,
+    )
+
+    if employees.count() != len(ids):
+        raise ValidationError("One or more employees were not found.")
 
     return ids
 

@@ -6,7 +6,7 @@ from .managers import EmployeeManager, CustomUserManager
 from common.models import UUIDModelMixin
 
 
-class User(AbstractUser):
+class User(UUIDModelMixin, AbstractUser):
     email = models.EmailField(unique=True)
     pending_email = models.EmailField(null=True, blank=True)
     email_verified = models.BooleanField(default=False)
@@ -82,7 +82,7 @@ class UserOTP(models.Model):
         return f"{self.user.email} — {self.task}"
 
 
-class SubscriptionPlan(models.Model):
+class SubscriptionPlan(UUIDModelMixin, models.Model):
     Tier_Choices = [("silver", "Silver"), ("gold", "Gold")]
     Period_Choices = [
         ("monthly", "Monthly"),

@@ -53,7 +53,7 @@ def create_razorpay_subscription(user, plan_id):
     request razorpay to create subscription for user with plan_id
     """
 
-    plan = SubscriptionPlan.objects.get(id=plan_id)
+    plan = SubscriptionPlan.objects.get(public_id=plan_id)
 
     response = razorpay.subscription.create(
         {

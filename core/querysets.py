@@ -160,7 +160,7 @@ class RecordQuerySet(QuerySet):
         Customer = apps.get_model("core", "Customer")
         return self.filter(
             customer__in=Customer.objects.filter(
-                customerassignment__employee_id__in=ids, customerassignment__active=True
+                customerassignment__employee__public_id__in=ids, customerassignment__active=True
             )
         ).distinct()
 
@@ -270,7 +270,7 @@ class PaymentQuerySet(QuerySet):
         Customer = apps.get_model("core", "Customer")
         return self.filter(
             customer__in=Customer.objects.filter(
-                customerassignment__employee_id__in=ids, customerassignment__active=True
+                customerassignment__employee__public_id__in=ids, customerassignment__active=True
             )
         ).distinct()
 
