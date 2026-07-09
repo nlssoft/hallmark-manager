@@ -1,0 +1,25 @@
+[project]
+name = "hallmark-manager"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "argon2-cffi>=25.1.0",
+    "cloudinary>=1.44.2",
+    "dj-rest-auth>=7.2.0",
+    "django-allauth>=65.18.0",
+    "django-anymail>=15.0",
+    "django-cloudinary-storage>=0.3.0",
+    "django-cors-headers>=4.9.0",
+    "django-debug-toolbar>=6.3.0",
+    "django-environ>=0.13.0",
+    "django-extensions>=4.1",
+    "django-filter>=25.2",
+    "djangorestframework-simplejwt>=5.5.1",
+    "drf-spectacular>=0.29.0",
+    "pillow>=12.2.0",
+    "psycopg2-binary>=2.9.12",
+    "razorpay>=2.0.1",
+    "resend>=2.30.1",
+]
