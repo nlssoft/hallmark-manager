@@ -178,7 +178,7 @@ class Record(UUIDModelMixin, models.Model):
     )
 
     class Meta:
-        ordering = ["-created_at", "-pk"]
+        ordering = ["-created_at"]
 
     def __str__(self) -> str:
         return f"Customer:{self.customer}\nPcs: {self.pcs} \
@@ -220,7 +220,7 @@ class Payment(UUIDModelMixin, models.Model):
     image = CloudinaryField("image", blank=True, null=True)
 
     class Meta:
-        ordering = ["-created_at", "-pk"]
+        ordering = ["-created_at"]
 
     def __str__(self) -> str:
         return f"Customer:{self.customer} Date:{self.created_at} Amount: {self.amount}"
@@ -289,7 +289,7 @@ class AuditLog(UUIDModelMixin, models.Model):
     reason = models.TextField(blank=True, null=True)
 
     class Meta:
-        ordering = ["-pk"]
+        ordering = ["-logged_at"]
 
     def __str__(self) -> str:
         return f"Customer: {self.before.customer} Model: {self.model}  \
@@ -310,7 +310,7 @@ class Request(UUIDModelMixin, models.Model):
     objects = RequestQuerySet.as_manager()
 
     class Meta:
-        ordering = ["-pk"]
+        ordering = ["-created_at"]
 
 
 class SnapShotRequest(models.Model):

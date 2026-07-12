@@ -172,6 +172,7 @@ class UserSerializer(UserDetailsSerializer):
     profile = ProfileSerializer(required=False, allow_null=True)
     email = serializers.EmailField(required=True)
     subscription = SubscriptionSerializer(read_only=True)
+    is_parent = serializers.SerializerMethodField()
 
     class Meta(UserDetailsSerializer.Meta):
         fields = (
@@ -180,7 +181,11 @@ class UserSerializer(UserDetailsSerializer):
             "email",
             "profile",
             "subscription",
+            "is_parent",
         )
+
+    def get_is_parent(self, obj):
+        return obj.parent_id is None
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

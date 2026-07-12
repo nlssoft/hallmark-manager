@@ -1,17 +1,18 @@
 import axios, { AxiosError } from "axios";
 import type { FailedQueueItem, RetryRequestConfig } from "../types/auth";
 import { refresh } from "./auth";
-import { notifyAuthFailure } from "../auth/event";
+import { notifyAuthFailure } from "../auth/events";
 
-export const api = axios.create({
+const apiConfig = {
   baseURL: import.meta.env.VITE_API_URL,
   withCredentials: true,
-});
+  withXSRFToken: true,
+  xsrfCookieName: "csrftoken",
+  xsrfHeaderName: "X-CSRFToken",
+};
 
-export const authApi = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-  withCredentials: true,
-});
+export const api = axios.create(apiConfig);
+export const authApi = axios.create(apiConfig);
 
 const failedQueue: FailedQueueItem[] = [];
 let isRefreshing: boolean = false;

@@ -5,12 +5,12 @@ export function getCSRFToken() {
   return api.get("/csrf/");
 }
 
-export function login(data: LoginRequest) {
+export async function login(data: LoginRequest) {
   return api.post("auth/login/", data);
 }
 
 export function logout() {
-  return api.post("auth/logout/");
+  api.post("auth/logout/");
 }
 
 export function refresh() {

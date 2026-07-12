@@ -30,7 +30,7 @@ class User(UUIDModelMixin, AbstractUser):
         return super().save(*args, **kwargs)
 
     class Meta:
-        ordering = ["-pk"]
+        ordering = ["username"]
 
     def __str__(self):
         return f"{self.username}"
@@ -100,7 +100,7 @@ class SubscriptionPlan(UUIDModelMixin, models.Model):
     max_downloads = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-pk"]
+        ordering = ["price"]
 
     def __str__(self) -> str:
         return f"Tier: {self.tier} Period: {self.period}, Price: {self.price}"
