@@ -1,3 +1,5 @@
+import type { LucideIcon } from "lucide-react";
+
 export interface DashboardSection {
   id: string;
   title: string;
@@ -5,6 +7,7 @@ export interface DashboardSection {
   route: string;
   disabled: boolean;
   allowed: string;
+  icon: LucideIcon;
 }
 
 export interface DashboardCardProp {

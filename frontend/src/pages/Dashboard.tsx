@@ -1,5 +1,16 @@
 import DashboardCard from "../components/DashBoardCard";
 import { useAuth } from "../hooks/useAuth";
+import type { DashboardSection } from "../types/dashboard";
+import {
+  Users,
+  UserRound,
+  Wrench,
+  Wallet,
+  ClipboardList,
+  ChartColumn,
+  Bell,
+  History,
+} from "lucide-react";
 
 const b = "both";
 const p = "parent";
@@ -13,6 +24,7 @@ const dashboardSections: DashboardSection[] = [
     route: "/groups",
     disabled: false,
     allowed: p,
+    icon: Users,
   },
   {
     id: "customers",
@@ -22,6 +34,8 @@ const dashboardSections: DashboardSection[] = [
     route: "/customers",
     disabled: false,
     allowed: b,
+    icon: UserRound,
+
   },
   {
     id: "services",
@@ -31,6 +45,7 @@ const dashboardSections: DashboardSection[] = [
     route: "/services",
     disabled: false,
     allowed: p,
+    icon: Wrench,
   },
   {
     id: "work-entries",
@@ -40,6 +55,7 @@ const dashboardSections: DashboardSection[] = [
     route: "/work-entries",
     disabled: false,
     allowed: p,
+    icon: ClipboardList,
   },
   {
     id: "payments",
@@ -49,6 +65,7 @@ const dashboardSections: DashboardSection[] = [
     route: "/payments",
     disabled: false,
     allowed: p,
+    icon: Wallet,
   },
   {
     id: "audit-logs",
@@ -58,6 +75,7 @@ const dashboardSections: DashboardSection[] = [
     route: "/audit-logs",
     disabled: false,
     allowed: p,
+    icon: History,
   },
   {
     id: "requests",
@@ -67,6 +85,7 @@ const dashboardSections: DashboardSection[] = [
     route: "/requests",
     disabled: false,
     allowed: b,
+    icon: Bell,
   },
   {
     id: "summary",
@@ -76,6 +95,7 @@ const dashboardSections: DashboardSection[] = [
     route: "/summary",
     disabled: false,
     allowed: b,
+    icon: ChartColumn,
   },
 ];
 
@@ -83,8 +103,8 @@ function Dashboard() {
   const { isParent } = useAuth();
 
   return (
-    <div className="min-h-screen bg-olive-200">
-      <main className="w-screen ">
+    <div className="min-h-screen bg-stone-50 ">
+      <main className=" max-w-7xl p-10 max-auto ">
         <DashboardCard isParent={isParent} sections={dashboardSections} />;
       </main>
     </div>

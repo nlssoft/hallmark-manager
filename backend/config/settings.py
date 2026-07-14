@@ -236,7 +236,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 # jwt settings
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=100),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
@@ -266,7 +266,7 @@ LOGGING = {
         "file": {
             "level": "ERROR",
             "class": "logging.FileHandler",
-            "filename": BASE_DIR / "logs" / "error.log",
+            "filename": BASE_DIR / "logs" / "errors.log",
         },
     },
     "root": {
