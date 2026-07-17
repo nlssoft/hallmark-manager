@@ -50,6 +50,7 @@ export function AuthProvider({ children }: Props) {
       loading,
       isAuthenticated: user !== null,
       isParent: user !== null && user.is_parent,
+      plan: user?.subscription?.subscription_plan?.tier ?? "None",
       loginUser,
     }),
     [user, loading, loginUser],

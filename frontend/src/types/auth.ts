@@ -28,7 +28,7 @@ interface SubscriptionPlan {
 
 interface Subscription {
   status: string;
-  subscription_plan: SubscriptionPlan;
+  subscription_plan: SubscriptionPlan | null;
   current_period_start: string;
   current_period_end: string;
 }
@@ -37,8 +37,8 @@ export interface User {
   public_id: string;
   username: string;
   email: string;
-  profile: Profile;
-  subscription: Subscription;
+  profile?: Profile | null;
+  subscription?: Subscription | null;
   is_parent: boolean;
 }
 
@@ -47,6 +47,7 @@ export interface AuthContextType {
   loading: boolean;
   isAuthenticated: boolean;
   isParent: boolean;
+  plan: string;
   loginUser: (data: LoginRequest) => Promise<void>;
 }
 

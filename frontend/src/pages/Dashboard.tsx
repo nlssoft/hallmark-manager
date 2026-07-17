@@ -1,19 +1,21 @@
 import DashboardCard from "../components/DashBoardCard";
+import NavBar from "../components/NavBar";
 import { useAuth } from "../hooks/useAuth";
 import type { DashboardSection } from "../types/dashboard";
 import {
   Users,
   UserRound,
-  Wrench,
+  LayersPlus,
   Wallet,
   ClipboardList,
   ChartColumn,
-  Bell,
-  History,
+  HandCoins,
+  EyeDashed,
 } from "lucide-react";
 
 const b = "both";
 const p = "parent";
+
 
 const dashboardSections: DashboardSection[] = [
   {
@@ -25,6 +27,7 @@ const dashboardSections: DashboardSection[] = [
     disabled: false,
     allowed: p,
     icon: Users,
+    color: "indigo",
   },
   {
     id: "customers",
@@ -35,6 +38,7 @@ const dashboardSections: DashboardSection[] = [
     disabled: false,
     allowed: b,
     icon: UserRound,
+    color: "sky"
 
   },
   {
@@ -45,7 +49,8 @@ const dashboardSections: DashboardSection[] = [
     route: "/services",
     disabled: false,
     allowed: p,
-    icon: Wrench,
+    icon: LayersPlus,
+    color: "amber"
   },
   {
     id: "work-entries",
@@ -56,6 +61,7 @@ const dashboardSections: DashboardSection[] = [
     disabled: false,
     allowed: p,
     icon: ClipboardList,
+    color: "red"
   },
   {
     id: "payments",
@@ -66,6 +72,7 @@ const dashboardSections: DashboardSection[] = [
     disabled: false,
     allowed: p,
     icon: Wallet,
+    color: "emerald"
   },
   {
     id: "audit-logs",
@@ -75,7 +82,8 @@ const dashboardSections: DashboardSection[] = [
     route: "/audit-logs",
     disabled: false,
     allowed: p,
-    icon: History,
+    icon: EyeDashed,
+    color: "violet"
   },
   {
     id: "requests",
@@ -85,7 +93,8 @@ const dashboardSections: DashboardSection[] = [
     route: "/requests",
     disabled: false,
     allowed: b,
-    icon: Bell,
+    icon: HandCoins,
+    color: "rose"
   },
   {
     id: "summary",
@@ -96,6 +105,7 @@ const dashboardSections: DashboardSection[] = [
     disabled: false,
     allowed: b,
     icon: ChartColumn,
+    color: "slate"
   },
 ];
 
@@ -104,8 +114,9 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen bg-stone-50 ">
+      <NavBar/>
       <main className=" max-w-7xl p-10 max-auto ">
-        <DashboardCard isParent={isParent} sections={dashboardSections} />;
+        <DashboardCard isParent={isParent} sections={dashboardSections} />
       </main>
     </div>
   );

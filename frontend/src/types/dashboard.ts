@@ -8,6 +8,7 @@ export interface DashboardSection {
   disabled: boolean;
   allowed: string;
   icon: LucideIcon;
+  color: "indigo" | "sky" | "amber" | "red" | "emerald" | "violet" | "rose"| "slate" 
 }
 
 export interface DashboardCardProp {
