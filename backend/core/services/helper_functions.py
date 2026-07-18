@@ -1,12 +1,12 @@
 from rest_framework.exceptions import ValidationError
 from django.utils.dateparse import parse_date
-from user.models import Employee, Profile
+from user.models import Employee, Profile, Setting
 from django.db.models import Q
 import uuid
 
 # def get_reason(request):
 #     reason = request.query_params.get("reason", "").strip() or None
-#     requires = request.user.profile.setting_reason
+#     requires = request.user.profile.reason_required
 
 #     if requires and reason is None:
 #         raise ValidationError("Reason is required.")
@@ -19,8 +19,9 @@ def get_reason(request):
 
     reason = request.query_params.get("reason", "").strip() or None
 
-    profile = getattr(request.user, "profile", None)
-    requires = bool(profile and profile.setting_reason)
+    setting = Setting.objects.get(owner=request.user)
+
+    requires = setting.reason_required
 
     if requires and reason is None:
         raise ValidationError("Reason is required.")

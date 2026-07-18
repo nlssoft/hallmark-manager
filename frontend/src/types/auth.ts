@@ -12,8 +12,8 @@ interface Profile {
   company_address: string;
   office_number1: string;
   office_number2: string;
-  setting_mode: true;
-  setting_reason: true;
+  image_required: boolean;
+  setting_reason: boolean;
 }
 
 interface SubscriptionPlan {

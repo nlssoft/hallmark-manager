@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework.routers import SimpleRouter
 from .views import EmployeeMixView
 from .subscription_view import (
+    CurrentSubscriptionView,
     SubscriptionPlanApiView,
     SubscriptionPlanPreviewApiView,
     SubscriptionCreateApiView,
@@ -40,4 +41,9 @@ urlpatterns = [
         RazorpayWebhookApiView.as_view(),
         name="subscription-webhook",
     ),
+    path(
+    "subscription/",
+    CurrentSubscriptionView.as_view(),
+    name="current-subscription",
+)
 ] + router.urls

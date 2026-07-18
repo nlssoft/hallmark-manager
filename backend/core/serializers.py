@@ -659,7 +659,7 @@ class WritePaymentSerializer(serializers.ModelSerializer):
         if (
             attrs.get("mode") == "o"
             and not attrs.get("image")
-            and self.context["request"].user.profile.setting_mode
+            and self.context["request"].user.setting.image_required
         ):
             raise ValidationError({"message": "Image is required for online payments."})
         return attrs

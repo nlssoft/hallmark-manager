@@ -45,15 +45,21 @@ class Employee(User):
 
 class Profile(models.Model):
     owner = models.OneToOneField(
-        User, blank=True, null=True, on_delete=models.CASCADE, related_name="profile"
+        User, blank=True, null=True, on_delete=models.CASCADE
     )
     number = models.CharField(max_length=15, null=True, blank=True)
     company_name = models.CharField(max_length=255, null=True, blank=True)
     company_address = models.TextField(null=True, blank=True)
     office_number1 = models.CharField(max_length=15, null=True, blank=True)
     office_number2 = models.CharField(max_length=15, null=True, blank=True)
-    setting_mode = models.BooleanField(default=True)
-    setting_reason = models.BooleanField(default=False)
+
+
+class Setting(models.Model):
+    owner= models.OneToOneField(User, on_delete=models.CASCADE)
+    image_required = models.BooleanField(default=True)
+    reason_required = models.BooleanField(default=True)
+
+
 
 
 class UserOTP(models.Model):
@@ -106,7 +112,7 @@ class SubscriptionPlan(UUIDModelMixin, models.Model):
         return f"Tier: {self.tier} Period: {self.period}, Price: {self.price}"
 
 
-class Subscription(models.Model):
+class Subscription(UUIDModelMixin, models.Model):
     status_choices = [
         ("trial", "Trial"),
         ("active", "Active"),

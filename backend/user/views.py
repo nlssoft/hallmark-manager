@@ -153,7 +153,7 @@ class CustomUserDetailView(UserDetailsView):
 
     def get_object(self):
         return User.objects.select_related(
-            "profile", "subscription__subscription_plan"
+            "profile",
         ).get(pk=self.request.user.pk)
 
     def update(self, request, *args, **kwargs):

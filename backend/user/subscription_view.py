@@ -3,19 +3,20 @@ import razorpay
 from django.conf import settings
 
 from rest_framework.views import APIView
+from rest_framework.generics import RetrieveAPIView
 from rest_framework.permissions import AllowAny
 from core.permissions import ParentAccount_Only
 from rest_framework.response import Response
 from rest_framework import status
-from django.db.models import Count
 from django.db import transaction
+from django.shortcuts import get_object_or_404
 
 from user.models import (
     Subscription,
     SubscriptionPlan,
     RazorpayEvent,
 )
-from .serializers import NestedEmployeeSerializer
+from .serializers import NestedEmployeeSerializer, SubscriptionSerializer
 from core.serializers import ServiceSerializer, ReadOnlyCustomerSerializer
 from .Services.subscriptionserviceshelpers import SubscriptionHelperFN
 from .models import Employee
@@ -33,6 +34,17 @@ from user.Services.subcriptionservices import (
 from .razorpay_client import client as razorpay
 
 
+class CurrentSubscriptionView(RetrieveAPIView):
+    serializer_class= SubscriptionSerializer
+    permission_classes= [ParentAccount_Only]
+
+    def get_object(self):
+        return get_object_or_404(
+            Subscription,
+            user=self.request.user
+        )
+    
+    
 class SubscriptionPlanApiView(APIView):
     permission_classes = [ParentAccount_Only]
 
