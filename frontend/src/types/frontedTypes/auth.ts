@@ -6,40 +6,43 @@ export interface LoginRequest {
   password: string;
 }
 
-interface Profile {
+export interface Profile {
   number: string;
-  company_name: string;
-  company_address: string;
-  office_number1: string;
-  office_number2: string;
-  setting_mode: true;
-  setting_reason: true;
+  companyName: string;
+  companyAddress: string;
+  officeNumber1: string;
+  officeNumber2: string;
 }
 
-interface SubscriptionPlan {
+export interface Setting{
+  owner: User
+  imageRequierd: boolean;
+  reasonRequierd: boolean;
+}
+
+export interface Plan {
   tier: string;
   period: string;
   price: number;
-  max_employees: number;
-  max_services: number;
-  max_assignments_per_customer: number;
-  max_downloads: number;
+  maxEmployees: number;
+  maxServices: number;
+  maxAssignmentsPerCustomer: number;
+  maxDownloads: number;
 }
 
-interface Subscription {
+export interface Subscription {
   status: string;
-  subscription_plan: SubscriptionPlan | null;
-  current_period_start: string;
-  current_period_end: string;
+  Plan: Plan | null;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
 }
 
 export interface User {
-  public_id: string;
+  publicId: string;
   username: string;
   email: string;
   profile?: Profile | null;
-  subscription?: Subscription | null;
-  is_parent: boolean;
+  isParent: boolean;
 }
 
 export interface AuthContextType {
@@ -47,8 +50,8 @@ export interface AuthContextType {
   loading: boolean;
   isAuthenticated: boolean;
   isParent: boolean;
-  plan: string;
   loginUser: (data: LoginRequest) => Promise<void>;
+  logoutUser: () => Promise<void>;
 }
 
 export interface Props {

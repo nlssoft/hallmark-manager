@@ -5,7 +5,7 @@ from django.db import transaction
 from .subscriptionserviceshelpers import SubscriptionHelperFN
 from user.models import (
     Subscription,
-    SubscriptionPlan,
+    Plan,
     SubscriptionHistory,
     TemporaryPendingPlanChange,
 )
@@ -53,7 +53,7 @@ def create_razorpay_subscription(user, plan_id):
     request razorpay to create subscription for user with plan_id
     """
 
-    plan = SubscriptionPlan.objects.get(public_id=plan_id)
+    plan = Plan.objects.get(public_id=plan_id)
 
     response = razorpay.subscription.create(
         {
@@ -75,12 +75,12 @@ def create_razorpay_subscription(user, plan_id):
         sub.razorpay_subscription_id
     )  # for canceltions
     sub.razorpay_subscription_id = response["id"]
-    sub.subscription_plan = plan
+    sub.plan = plan
     sub.save(
         update_fields=[
             "previous_razorpay_subscription_id",
             "razorpay_subscription_id",
-            "subscription_plan",
+            "plan",
         ]
     )
 
@@ -104,7 +104,7 @@ def handle_subscription_activated(subscription, payment):
         SubscriptionHelperFN.reduce(obj)
         obj.delete()
 
-    if sub.subscription_plan.tier == "gold":
+    if sub.plan.tier == "gold":
         SubscriptionHelperFN.return_benefits(sub.user)
 
     SubscriptionHistory.objects.create(

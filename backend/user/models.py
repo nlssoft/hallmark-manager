@@ -82,7 +82,7 @@ class UserOTP(models.Model):
         return f"{self.user.email} — {self.task}"
 
 
-class SubscriptionPlan(UUIDModelMixin, models.Model):
+class Plan(UUIDModelMixin, models.Model):
     Tier_Choices = [("silver", "Silver"), ("gold", "Gold")]
     Period_Choices = [
         ("monthly", "Monthly"),
@@ -115,9 +115,7 @@ class Subscription(models.Model):
     ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    subscription_plan = models.ForeignKey(
-        SubscriptionPlan, on_delete=models.SET_NULL, null=True, blank=True
-    )
+    plan = models.ForeignKey(Plan, on_delete=models.SET_NULL, null=True, blank=True)
     razorpay_subscription_id = models.CharField(
         max_length=255, unique=True, null=True, blank=True
     )
@@ -151,10 +149,10 @@ class Subscription(models.Model):
         if self.status == "trial":
             return "silver"
 
-        return self.subscription_plan.tier if self.subscription_plan else None
+        return self.plan.tier if self.plan else None
 
     def __str__(self) -> str:
-        return f"User: {self.user}, plan: {self.subscription_plan}, razorpay_subscription_id: {self.razorpay_subscription_id}"
+        return f"User: {self.user}, plan: {self.plan}, razorpay_subscription_id: {self.razorpay_subscription_id}"
 
 
 class RazorpayEvent(models.Model):
@@ -183,7 +181,7 @@ class SubscriptionHistory(models.Model):
 
 class TemporaryPendingPlanChange(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    new_plan = models.ForeignKey(SubscriptionPlan, on_delete=models.CASCADE)
+    new_plan = models.ForeignKey(Plan, on_delete=models.CASCADE)
     employee_id = models.JSONField(null=True, blank=True)
     service_id = models.JSONField(null=True, blank=True)
     customer_employee_id = models.JSONField(null=True, blank=True)

@@ -5,11 +5,12 @@ import {
   useMemo,
   useCallback,
 } from "react";
-import type { AuthContextType, LoginRequest, Props, User } from "../types/auth";
-import { getCSRFToken, getCurrentUser, login } from "../api/auth";
+import type { AuthContextType, LoginRequest, Props, User } from "../types/frontedTypes/auth";
+import { getCSRFToken, getCurrentUser, login, logout } from "../api/auth";
 import {
   authChannel,
   handleAuthfailure,
+  notifyAuthFailure,
   registerAuthFailureHandler,
 } from "../auth/events";
 import { useNavigate } from "react-router-dom";
@@ -25,8 +26,8 @@ export function AuthProvider({ children }: Props) {
   const loadUser = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await getCurrentUser();
-      setUser(response.data);
+      const data = await getCurrentUser();
+      setUser(data);
     } catch {
       setUser(null);
     } finally {
@@ -43,17 +44,25 @@ export function AuthProvider({ children }: Props) {
     [loadUser],
   );
 
+  const logoutUser = useCallback(
+    async ()=> {
+      await logout()
+      notifyAuthFailure()
+    },
+    []
+  )
+
   // the value that every page uses
   const value = useMemo(
     () => ({
       user,
       loading,
       isAuthenticated: user !== null,
-      isParent: user !== null && user.is_parent,
-      plan: user?.subscription?.subscription_plan?.tier ?? "None",
+      isParent: user !== null && user.isParent,
       loginUser,
+      logoutUser,
     }),
-    [user, loading, loginUser],
+    [user, loading, loginUser, logoutUser],
   );
 
   useEffect(() => {

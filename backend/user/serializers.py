@@ -1,5 +1,5 @@
 # cls
-from .models import User, Employee, Profile, UserOTP, SubscriptionPlan, Subscription
+from .models import User, Employee, Profile, UserOTP, Plan, Subscription
 from core.models import Customer
 from core.nestedserializer import NestedCustomerSerializer
 from .Services.subscriptionlimit import PlanLimitChecker
@@ -135,12 +135,12 @@ class VerifyEmailOTPSerializer(serializers.Serializer):
         return attrs
 
 
-class SubscriptionPlanSerializer(serializers.ModelSerializer):
+class PlanSerializer(serializers.ModelSerializer):
     tier = serializers.CharField(source="get_tier_display", read_only=True)
     period = serializers.CharField(source="get_period_display", read_only=True)
 
     class Meta:
-        model = SubscriptionPlan
+        model = Plan
         fields = [
             "tier",
             "period",
@@ -155,13 +155,13 @@ class SubscriptionPlanSerializer(serializers.ModelSerializer):
 
 class SubscriptionSerializer(serializers.ModelSerializer):
     status = serializers.CharField(source="get_status_display", read_only=True)
-    subscription_plan = SubscriptionPlanSerializer()
+    plan = PlanSerializer()
 
     class Meta:
         model = Subscription
         fields = [
             "status",
-            "subscription_plan",
+            "plan",
             "current_period_start",
             "current_period_end",
         ]

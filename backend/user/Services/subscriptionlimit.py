@@ -18,7 +18,7 @@ class PlanLimit:
         if self.subscription.status == "trial":
             return self.TRIAL_PLAN[field]
 
-        plan = self.subscription.subscription_plan
+        plan = self.subscription.plan
         return getattr(plan, field) if plan else 0
 
 

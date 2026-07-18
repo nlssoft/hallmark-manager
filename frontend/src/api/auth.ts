@@ -1,4 +1,5 @@
-import type { LoginRequest } from "../types/auth";
+import { mapUser } from "../mappers/userMapper";
+import type { LoginRequest } from "../types/frontedTypes/auth";
 import { api, authApi } from "./axios";
 
 export function getCSRFToken() {
@@ -10,13 +11,14 @@ export async function login(data: LoginRequest) {
 }
 
 export function logout() {
-  api.post("auth/logout/");
+  return api.post("auth/logout/");
 }
 
 export function refresh() {
   return authApi.post("auth/token/refresh/");
 }
 
-export function getCurrentUser() {
-  return api.get("auth/user/");
+export async function getCurrentUser() {
+  const {data}= await api.get("auth/user/");
+  return mapUser(data)
 }

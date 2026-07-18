@@ -12,7 +12,7 @@ from django.db import transaction
 
 from user.models import (
     Subscription,
-    SubscriptionPlan,
+    Plan,
     RazorpayEvent,
 )
 from .serializers import NestedEmployeeSerializer
@@ -33,11 +33,11 @@ from user.Services.subcriptionservices import (
 from .razorpay_client import client as razorpay
 
 
-class SubscriptionPlanApiView(APIView):
+class PlanApiView(APIView):
     permission_classes = [ParentAccount_Only]
 
     def get(self, request):
-        plans = SubscriptionPlan.objects.all()
+        plans = Plan.objects.all()
 
         data = [
             {
@@ -57,7 +57,7 @@ class SubscriptionPlanApiView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
-class SubscriptionPlanPreviewApiView(APIView):
+class PlanPreviewApiView(APIView):
     permission_classes = [ParentAccount_Only]
 
     def post(self, request):
@@ -66,14 +66,14 @@ class SubscriptionPlanPreviewApiView(APIView):
         plan_id = request.data.get("plan_id")
 
         try:
-            new_plan = SubscriptionPlan.objects.get(public_id=plan_id)
-        except SubscriptionPlan.DoesNotExist:
+            new_plan = Plan.objects.get(public_id=plan_id)
+        except Plan.DoesNotExist:
             return Response(
                 {"error": "Subscription plan is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        data["subscription_plan"] = {
+        data["plan"] = {
             "public_id": new_plan.public_id,
             "tier": new_plan.tier,
             "tier_display": new_plan.get_tier_display(),
@@ -123,8 +123,8 @@ class SubscriptionCreateApiView(APIView):
         plan_id = request.data.get("plan_id")
 
         try:
-            new_plan = SubscriptionPlan.objects.get(public_id=plan_id)
-        except SubscriptionPlan.DoesNotExist:
+            new_plan = Plan.objects.get(public_id=plan_id)
+        except Plan.DoesNotExist:
             return Response(
                 {"error": "Subscription plan is required"},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -171,11 +171,11 @@ class SubscritionStatusApiView(APIView):
                 "current_period_end": sub.current_period_end,
                 "plan": (
                     {
-                        "tier": sub.subscription_plan.get_tier_display(),
-                        "period": sub.subscription_plan.get_period_display(),
-                        "price": str(sub.subscription_plan.price),
+                        "tier": sub.plan.get_tier_display(),
+                        "period": sub.plan.get_period_display(),
+                        "price": str(sub.plan.price),
                     }
-                    if sub.subscription_plan
+                    if sub.plan
                     else None
                 ),
             },

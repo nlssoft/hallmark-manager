@@ -11,7 +11,7 @@ from django.db.models import Q
 from .models import (
     User,
     Profile,
-    SubscriptionPlan,
+    Plan,
     Subscription,
     SubscriptionHistory,
     RazorpayEvent,
@@ -118,8 +118,8 @@ class UserAdmin(DUserAdmin):
     get_groups.short_description = "Groups"
 
 
-@admin.register(SubscriptionPlan)
-class SubscriptionPlanAdmin(admin.ModelAdmin):
+@admin.register(Plan)
+class PlanAdmin(admin.ModelAdmin):
 
     list_display = [
         "__str__",
@@ -151,7 +151,7 @@ def extend_trial_30(modeladmin, request, queryset):
 def force_activate(modeladmin, request, queryset, days, action):
     today = timezone.now()
 
-    if queryset.filter(subscription_plan__isnull=True).exists():
+    if queryset.filter(plan__isnull=True).exists():
         modeladmin.message_user(
             request,
             "One or more user has no Subscription plan.",
@@ -159,7 +159,7 @@ def force_activate(modeladmin, request, queryset, days, action):
         )
         return
 
-    elif queryset.filter(~Q(subscription_plan__period=action)).exists():
+    elif queryset.filter(~Q(plan__period=action)).exists():
         modeladmin.message_user(
             request,
             "One or more user has a different selected plan period then the action.",
@@ -178,7 +178,7 @@ def force_activate(modeladmin, request, queryset, days, action):
     history = [
         SubscriptionHistory(
             subscription=us,
-            amount=us.subscription_plan.price,
+            amount=us.plan.price,
             status="manual",
         )
         for us in queryset
@@ -307,7 +307,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
     def get_queryset(self, request: HttpRequest) -> QuerySet:
         return Subscription.objects.filter(
             user__parent=None, user__is_superuser=False
-        ).select_related("user", "subscription_plan")
+        ).select_related("user", "plan")
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == "user":
@@ -330,7 +330,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
     list_display = [
         "__str__",
         "user",
-        "subscription_plan",
+        "plan",
         "created_at",
         "status",
         "razorpay_subscription_id",
@@ -344,7 +344,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
     search_fields = ["user__username"]
 
     list_filter = [
-        "subscription_plan__tier",
+        "plan__tier",
         "status",
         "razorpay_status",
         ExpiringSoonFilter,

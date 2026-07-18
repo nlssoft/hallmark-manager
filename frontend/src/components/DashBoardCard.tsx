@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import type { DashboardSection, DashboardCardProp } from "../types/dashboard";
+import type { DashboardSection, DashboardCardProp } from "../types/frontedTypes/dashboard";
 
 
 const colorMap = {

@@ -152,9 +152,9 @@ class CustomUserDetailView(UserDetailsView):
     """NOTE this view genrates the first OTP for email change."""
 
     def get_object(self):
-        return User.objects.select_related(
-            "profile", "subscription__subscription_plan"
-        ).get(pk=self.request.user.pk)
+        return User.objects.select_related("profile", "subscription__plan").get(
+            pk=self.request.user.pk
+        )
 
     def update(self, request, *args, **kwargs):
         with transaction.atomic():

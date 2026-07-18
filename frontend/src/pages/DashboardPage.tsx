@@ -1,7 +1,7 @@
 import DashboardCard from "../components/DashBoardCard";
 import NavBar from "../components/NavBar";
 import { useAuth } from "../hooks/useAuth";
-import type { DashboardSection } from "../types/dashboard";
+import type { DashboardSection } from "../types/frontedTypes/dashboard";
 import {
   Users,
   UserRound,
@@ -109,7 +109,7 @@ const dashboardSections: DashboardSection[] = [
   },
 ];
 
-function Dashboard() {
+function DashboardPage() {
   const { isParent } = useAuth();
 
   return (
@@ -122,4 +122,4 @@ function Dashboard() {
   );
 }
 
-export default Dashboard;
+export default DashboardPage;

@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import type { FailedQueueItem, RetryRequestConfig } from "../types/auth";
+import type { FailedQueueItem, RetryRequestConfig } from "../types/frontedTypes/auth";
 import { refresh } from "./auth";
 import { notifyAuthFailure } from "../auth/events";
 
