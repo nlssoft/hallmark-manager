@@ -68,8 +68,8 @@ function DashboardCard({ isParent, sections }: DashboardCardProp) {
         return(<button
           key={s.id}
           onClick={() => handleRouting(s)}
-          className="flex flex-col items-start text-left min-h-56
-          bg-white gap-5 border border-transparent  px-8 py-8
+          className="flex flex-col items-start text-left min-h-60
+          bg-white gap-5 border border-transparent  px-8 py-12
           rounded-2xl m-3 shadow-lg hover:shadow-xl
           hover:translate-y-2 hover:border-amber-200
           cursor-pointer transition-all 

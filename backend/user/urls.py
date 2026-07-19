@@ -8,6 +8,7 @@ from .subscription_view import (
     SubscritionStatusApiView,
     RazorpayWebhookApiView,
     SubscriptionCancelledApiView,
+    CurrentSubscriptionView,
 )
 
 router = SimpleRouter()

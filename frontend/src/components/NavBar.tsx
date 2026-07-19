@@ -78,7 +78,8 @@ function NavBar(){
             sticky top-0 z-50
             border-b border-stone-200 bg-white/80 backdrop-blur-md">
             
-            <button onClick={()=>handleRouting()} className="flex  cursor-pointer">
+            <button onClick={()=>handleRouting()} className="
+            flex  cursor-pointer items-center">
                 <LayoutDashboard className="ml-3"/>
                 <div 
                     className="ml-1 font-semibold text-stone-900 
@@ -88,7 +89,7 @@ function NavBar(){
 
             <div ref={menuRef}>
                 <button onClick={()=>setOpen(prev=> !prev)} className="flex items-center 
-                    justify-center w-10 h-10 rounded-full 
+                    justify-center w-10 h-10 mr-5 rounded-full 
                     bg-stone-200 text-stone-700 font-semibold
                     hover:bg-stone-300
                     transition-all cursor-pointer">

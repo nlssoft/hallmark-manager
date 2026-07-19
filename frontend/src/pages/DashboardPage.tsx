@@ -115,7 +115,7 @@ function DashboardPage() {
   return (
     <div className="min-h-screen bg-stone-50 ">
       <NavBar/>
-      <main className=" max-w-7xl p-10 max-auto ">
+      <main className="p-10 max-auto">
         <DashboardCard isParent={isParent} sections={dashboardSections} />
       </main>
     </div>

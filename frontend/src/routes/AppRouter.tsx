@@ -5,6 +5,7 @@ import DashboardPage from "../pages/DashboardPage";
 import { ProtectedRoutes } from "./ProtectedRoutes";
 import { GuestRoutes } from "./GuestRoutes";
 import { AuthProvider } from "../context/AuthContext";
+import CustomerPage from "../pages/CustomerPage";
 
 function AppRouter() {
   return (
@@ -24,6 +25,14 @@ function AppRouter() {
             element={
               <ProtectedRoutes>
                 <DashboardPage />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/customers"
+            element={
+              <ProtectedRoutes>
+                <CustomerPage/>
               </ProtectedRoutes>
             }
           />
