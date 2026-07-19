@@ -40,4 +40,9 @@ urlpatterns = [
         RazorpayWebhookApiView.as_view(),
         name="subscription-webhook",
     ),
+    path(
+        "subscription/",
+        CurrentSubscriptionView.as_view(),
+        name="current-subscription",
+    ),
 ] + router.urls

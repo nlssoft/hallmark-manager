@@ -1,5 +1,5 @@
 # cls
-from .models import User, Employee, Profile, UserOTP, Plan, Subscription
+from .models import User, Employee, Profile, UserOTP, Plan, Subscription, Setting
 from core.models import Customer
 from core.nestedserializer import NestedCustomerSerializer
 from .Services.subscriptionlimit import PlanLimitChecker
@@ -25,8 +25,6 @@ class ProfileSerializer(serializers.ModelSerializer):
             "company_address",
             "office_number1",
             "office_number2",
-            "setting_mode",
-            "setting_reason",
         )
 
     def validate(self, attrs):
@@ -81,6 +79,8 @@ class CustomRegisterSerializer(RegisterSerializer):
                 office_number1=self.validated_data.get("office_number1", ""),
                 office_number2=self.validated_data.get("office_number2", ""),
             )
+
+            Setting.objects.create(owner=user)
 
             return user
 
@@ -160,8 +160,9 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Subscription
         fields = [
-            "status",
+            "public_id",
             "plan",
+            "status",
             "current_period_start",
             "current_period_end",
         ]
@@ -171,7 +172,6 @@ class SubscriptionSerializer(serializers.ModelSerializer):
 class UserSerializer(UserDetailsSerializer):
     profile = ProfileSerializer(required=False, allow_null=True)
     email = serializers.EmailField(required=True)
-    subscription = SubscriptionSerializer(read_only=True)
     is_parent = serializers.SerializerMethodField()
 
     class Meta(UserDetailsSerializer.Meta):
@@ -180,7 +180,6 @@ class UserSerializer(UserDetailsSerializer):
             "username",
             "email",
             "profile",
-            "subscription",
             "is_parent",
         )
 
@@ -192,7 +191,6 @@ class UserSerializer(UserDetailsSerializer):
 
         if instance.parent_id is not None:
             data.pop("profile", None)
-            data.pop("subscription", None)
 
         return data
 
