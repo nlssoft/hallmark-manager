@@ -1,7 +1,7 @@
 import type { User } from "./auth";
 import type { LucideIcon } from "lucide-react";
 
-export interface option{
+export interface option {
     key: string;
     name: string;
     route: string;
@@ -9,10 +9,9 @@ export interface option{
     icon: LucideIcon;
 }
 
-export interface ProfileMenuProps{
+export interface ProfileMenuProps {
     options: option[];
     user: User;
-    fn: (route:string) => void;
-    logoutFn: ()=> Promise<void>;
-
+    fn: (route: string) => void;
+    logoutFn: () => Promise<void>;
 }

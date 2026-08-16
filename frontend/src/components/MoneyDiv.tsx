@@ -1,16 +1,19 @@
 import { Minus } from "lucide-react";
+import { formatMoney } from "../utils/formaters";
 
-function MoneyDiv({ amount, color }: { amount: number, color: string }) {
+function MoneyDiv({ amount, color }: { amount: number; color: string }) {
     if (amount > 0) {
         return (
-            <span className={`text-sm ${color}`}>
-                ₹{amount}
-            </span>
+            <div className={`w-full text-right ${color}`}>
+                ₹{formatMoney(amount)}
+            </div>
         );
     }
 
     return (
-        <Minus className="text-gray-300" />
+        <div className="flex w-full justify-end">
+            <Minus className="text-gray-300" />
+        </div>
     );
 }
 

@@ -3,15 +3,15 @@ import { useAuth } from "../hooks/useAuth";
 import type { Props } from "../types/frontedTypes/auth";
 
 export function ProtectedRoutes({ children }: Props) {
-  const { loading, isAuthenticated } = useAuth();
+    const { loading, isAuthenticated } = useAuth();
 
-  if (loading) {
-    return <p>Loading...</p>;
-  }
+    if (loading) {
+        return <p>Loading...</p>;
+    }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/" replace />;
-  }
+    if (!isAuthenticated) {
+        return <Navigate to="/" replace />;
+    }
 
-  return children;
+    return children;
 }
