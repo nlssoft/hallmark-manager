@@ -2,7 +2,7 @@ import NavBar from "../components/NavBar";
 import CustomerFilter from "../components/CustomerFilter";
 import PageHeader from "../components/PageHeader";
 import Pagination from "../components/Pagination";
-import CustomerMain from "../components/CustomerMain";
+import CustomerDataView from "../components/CustomerDataView";
 
 const data = [
     {
@@ -201,7 +201,7 @@ function CustomerPage() {
 
                 <CustomerFilter />
 
-                <CustomerMain customer={data} />
+                <CustomerDataView customer={data} />
 
                 <footer className="mt-8">
                     <Pagination count={20} page={1} keyWord="Customers" />

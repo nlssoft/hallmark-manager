@@ -1,7 +1,7 @@
 import CustomerCard from "./CustomerCard";
 import CustomerTable from "./CutomerTable";
 
-function CustomerMain({ customer }) {
+function CustomerDataView({ customer }) {
     return (
         <div>
             <div className="md:hidden">
@@ -14,4 +14,4 @@ function CustomerMain({ customer }) {
     );
 }
 
-export default CustomerMain;
+export default CustomerDataView;

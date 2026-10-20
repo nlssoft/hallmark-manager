@@ -32,7 +32,7 @@ DEBUG = env.bool("DJANGO_DEBUG", default=env.bool("DEBUG", default=False))
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env(
     "SECRET_KEY",
-    default="dev-only-key" if DEBUG else None,
+    default="dev_only_key" if DEBUG else None,
 )
 
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=[])

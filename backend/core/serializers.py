@@ -64,8 +64,8 @@ class NestedGroupSerializer(serializers.Serializer):
 # Write
 class WriteGroupSerializer(serializers.Serializer):
     public_id = serializers.UUIDField(read_only=True)
-    description = serializers.CharField(
-        max_length=255, allow_blank=True, allow_null=True, required=False
+    name = serializers.CharField(
+        max_length=255,  required=True
     )  # keep or not keep
 
     service = serializers.SlugRelatedField(

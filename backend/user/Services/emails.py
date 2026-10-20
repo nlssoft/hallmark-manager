@@ -1,6 +1,11 @@
+import logging
+
 from django.conf import settings
 from django.core.mail import send_mail
 from rest_framework.exceptions import APIException
+
+
+logger = logging.getLogger(__name__)
 
 
 class EmailSendFailed(APIException):
@@ -13,6 +18,11 @@ def send_mail_or_raise(**kwargs):
     try:
         sent_count = send_mail(fail_silently=False, **kwargs)
     except Exception as exc:
+        logger.exception(
+            "Resend failed to send email to %s: %s",
+            kwargs.get("recipient_list"),
+            exc,
+        )
         raise EmailSendFailed() from exc
 
     if sent_count != 1:
